@@ -242,4 +242,16 @@ humann_2phyloseq <- function(humann_2df)
 
 
 ### next : get stratifeied / unstratified subset_taxa(!is.na(organism))= stratified / un stratified
-### 
+### for beta div :     subset_taxa(!(grepl("^UN", Gene))) %>%
+# subset_taxa(is.na(organism)) %>%
+# transform_sample_counts(function(x) x / sum(x)) %>%
+### for diff abundance
+# 
+# As seen here <https://github.com/fconstancias/omnibus-and-maaslin2-rscripts-and-hmp2-data/blob/patch-1/Maaslin2.R>
+#   
+#   - No unmapped and unintegrated pathway 
+# - ~ 1 normalised.
+# --> we have to renormalise
+# --> get rid of stratification
+# <https://forum.biobakery.org/t/compatibility-of-humann2-output-files-for-maaslin2/412/9>
+#   **However, they can be useful to retain for linear modeling as they limit the potential for housekeeping functions to artificially inflate in less-well-characterized communities.**
