@@ -52,3 +52,4 @@ data/processed/metaphlan/tuned_merged_metagenome.txt
 data/processed/motus/motus.merged
 data/processed/motus/motus.merged_species.txt
 data/processed/motus/mOTUS_tree.ref_pref.iqtree.treefile
+scripts/.DS_Store
