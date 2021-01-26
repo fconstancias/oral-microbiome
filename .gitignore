@@ -41,3 +41,14 @@ vignettes/*.pdf
 #
 *tsv
 *RDS
+data/processed/metaphlan/default_merged_metagenome.txt
+data/processed/metaphlan/species_default.txt
+data/processed/metaphlan/species_tuned.txt
+data/processed/metaphlan/species_tuned2.txt
+data/processed/metaphlan/species_tuned3.txt
+data/processed/metaphlan/tuned2_merged_metagenome.txt
+data/processed/metaphlan/tuned3_merged_metagenome.txt
+data/processed/metaphlan/tuned_merged_metagenome.txt
+data/processed/motus/motus.merged
+data/processed/motus/motus.merged_species.txt
+data/processed/motus/mOTUS_tree.ref_pref.iqtree.treefile
