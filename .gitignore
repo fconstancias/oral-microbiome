@@ -37,3 +37,7 @@ vignettes/*.pdf
 
 # Mac related 
 .DS_Store
+
+#
+*tsv
+*RDS
