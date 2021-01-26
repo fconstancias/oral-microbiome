@@ -239,3 +239,7 @@ humann_2phyloseq <- function(humann_2df)
   
   return(physeq)
 }
+
+
+### next : get stratifeied / unstratified subset_taxa(!is.na(organism))= stratified / un stratified
+### 
