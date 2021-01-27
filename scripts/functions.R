@@ -31,7 +31,9 @@ metaphlan_2phyloseq <- function(merged_metaphlan,
                                 metadata,
                                 tree = "https://raw.githubusercontent.com/biobakery/MetaPhlAn/master/metaphlan/utils/mpa_v30_CHOCOPhlAn_201901_species_tree.nwk",
                                 skip_col = 0,
-                                id = "#SampleID"){
+                                id = "#SampleID",
+                                tax_label = c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species"),
+                                tax_sep = "\\|"){
   
   ## ------------------------------------------------------------------------
   require(tidyverse); require(speedyseq)
@@ -45,7 +47,7 @@ metaphlan_2phyloseq <- function(merged_metaphlan,
     read_tsv(col_names = TRUE,
              skip = skip_col) %>%
     dplyr::select_if(names(.) %!in% c('NCBI_tax_id')) %>%
-    tidyr::separate(id,c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species"),sep = "\\|") %>%
+    tidyr::separate(id,tax_label ,sep = tax_sep) %>%
     dplyr::filter(!is.na(Species)) -> df
   ## ------------------------------------------------------------------------
   
@@ -59,14 +61,16 @@ metaphlan_2phyloseq <- function(merged_metaphlan,
   ## ------------------------------------------------------------------------
   
   merge_phyloseq(otu_table(count, taxa_are_rows = TRUE),
-                 tax_table(tax),
-                 metadata %>% phyloseq::sample_data()) -> physeq
+                 tax_table(tax)) -> physeq
   
   tax_table(physeq) <- tax_table(physeq) %>% gsub(pattern="[a-s]__",replacement="")
   
   taxa_names(physeq) <- tax_table(physeq)[,"Species"]
   ## ------------------------------------------------------------------------
-  
+  if (file.exists(metadata) == TRUE){
+    merge_phyloseq(physeq,
+                   metadata %>% phyloseq::sample_data()) -> physeq
+  }
   if (tree != FALSE){
     tree %>%
       ape::read.tree() -> tree_file
@@ -240,18 +244,58 @@ humann_2phyloseq <- function(humann_2df)
   return(physeq)
 }
 
+#' @title ...
+#' @param .
+#' @param ..
+#' @author Florentin Constancias
+#' @note .
+#' @note .
+#' @note .
+#' #'As seen here <https://github.com/fconstancias/omnibus-and-maaslin2-rscripts-and-hmp2-data/blob/patch-1/Maaslin2.R>
+#'  - No unmapped and unintegrated pathway 
+#' - ~ 1 normalised.
+#' --> we have to renormalise
+#'--> get rid of stratification
+#' <https://forum.biobakery.org/t/compatibility-of-humann2-output-files-for-maaslin2/412/9>
+#'  **However, they (unmapped/unintegrated) can be useful to retain for linear modeling as they limit the potential for housekeeping functions to artificially inflate in less-well-characterized communities.**
+#' @return .
+#' @export
+#' @examples
+#'
 
-### next : get stratifeied / unstratified subset_taxa(!is.na(organism))= stratified / un stratified
-### for beta div :     subset_taxa(!(grepl("^UN", Gene))) %>%
-# subset_taxa(is.na(organism)) %>%
-# transform_sample_counts(function(x) x / sum(x)) %>%
-### for diff abundance
-# 
-# As seen here <https://github.com/fconstancias/omnibus-and-maaslin2-rscripts-and-hmp2-data/blob/patch-1/Maaslin2.R>
-#   
-#   - No unmapped and unintegrated pathway 
-# - ~ 1 normalised.
-# --> we have to renormalise
-# --> get rid of stratification
-# <https://forum.biobakery.org/t/compatibility-of-humann2-output-files-for-maaslin2/412/9>
-#   **However, they can be useful to retain for linear modeling as they limit the potential for housekeeping functions to artificially inflate in less-well-characterized communities.**
+
+phyloseq_get_humann_strat_un_output <- function(physeq,
+                                                output = "stratified", # stratified / unstratified
+                                                remove_unmapped_unintegrated = FALSE, 
+                                                transform = "compositional",# from microbiome:: 'compositional' (ie relative abundance), 'Z', 'log10', 'log10p', 'hellinger', 'identity', 'clr', or any method from the vegan::decostand function.
+                                                export_long_df = TRUE)
+{
+  if (remove_unmapped_unintegrated == TRUE){
+    physeq %>%
+      subset_taxa(!(grepl("^UN", Gene))) -> physeq
+  }
+  if (output == "stratified"){
+    physeq %>%
+      subset_taxa(!is.na(organism)) -> physeq
+  }
+  if (output == "unstratified"){
+    physeq %>%
+      subset_taxa(is.na(organism)) -> physeq
+  }
+  
+  if (transform != FALSE){
+    physeq %>%
+      microbiome::transform(transform) -> physeq
+  }
+  
+  return(physeq)
+  
+  if (export_long_df == TRUE){
+    out <- list("physeq" = physeq,
+                "df" = physeq %>% 
+                  speedyseq::psmelt())
+    return(out)
+    
+  }
+}
+
