@@ -1,0 +1,575 @@
+---
+title: "Oral Microbiome - Predominant All sites `r Sys.Date()`"
+author: "Florentin CONSTANCIAS"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 4
+---
+
+<style type="text/css">
+div.main-container {
+max-width: 1800px;
+margin-left: auto;
+margin-right: auto;
+}
+.Table-Normal {
+position: relative;
+//display: block;
+margin: 10px auto;
+padding: 0;
+width: 100%;
+height: auto;
+border-collapse: collapse;
+text-align: center;
+}
+</style>
+
+
+```{r setup, include=FALSE}
+rm(list = ls())
+
+knitr::opts_chunk$set(echo = TRUE)
+DT::datatable(matrix())
+# knitr::opts_chunk$set(dev = 'pdf')
+# knitr::purl("Mdown.Rmd")
+
+```
+
+
+```{r packages, results=FALSE, warning=TRUE, include=FALSE}
+require(tidyverse); packageVersion("tidyverse")
+```
+
+```{r packages, results=FALSE, warning=TRUE, include=FALSE}
+biobakery_function <- ("~/Documents/GitHub/DivComAnalyses/R/phyloseq_biobakery_functions.R")
+alpha <- ("~/Documents/GitHub/DivComAnalyses/R/phyloseq_alpha.R")
+beta <- ("~/Documents/GitHub/DivComAnalyses/R/phyloseq_beta.R")
+taxa <- ("~/Documents/GitHub/DivComAnalyses/R/phyloseq_taxa_tests.R")
+```
+
+```{r packages, results=FALSE, warning=TRUE, include=FALSE}
+sapply(c(biobakery_function, alpha, beta, taxa), source, chdir = TRUE)
+```
+
+Inputs:
+
+```{r, message = FALSE, results=FALSE}
+metpahlan <- "~/Documents/GitHub/oral-microbiome/data/processed/humann/merged_metaphlan3_humann3.tsv"
+
+pathway_DNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/DNA/pathabundance_cpm_joined_tables.tsv"
+pathway_RNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/RNA/pathabundance_cpm_joined_tables.tsv"
+
+kegg_DNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/DNA/genefamilies_cpm_joined_tables_uniref90_ko_renamed_kegg-orthology.tsv"
+kegg_RNA <- "~/Documents/GitHub/oral-microbiome/data/processed/humann/RNA/genefamilies_cpm_joined_tables_uniref90_ko_renamed_kegg-orthology.tsv"
+
+l4c_DNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/DNA/genefamilies_joined_tables_uniref90_level4ec_renamed_ec.tsv"
+l4c_RNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/RNA/genefamilies_joined_tables_uniref90_level4ec_renamed_ec.tsv"
+
+go_DNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/DNA/genefamilies_cpm_joined_tables_uniref90_go_renamed_go.tsv"
+go_RNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/RNA/genefamilies_cpm_joined_tables_uniref90_go_renamed_go.tsv"
+
+metac_DNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/DNA/genefamilies_cpm_joined_tables_uniref90_rxn_renamed_metacyc-rxn.tsv"
+metac_RNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/RNA/genefamilies_cpm_joined_tables_uniref90_rxn_renamed_metacyc-rxn.tsv"
+
+pfam_DNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/DNA/genefamilies_joined_tables_uniref90_pfam_renamed_pfam.tsv"
+pfam_RNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/RNA/genefamilies_joined_tables_uniref90_pfam_renamed_pfam.tsv"
+
+metadata <- "~/Documents/GitHub/oral-microbiome/data/metadata_all_DNA_RNA.xlsx"
+```
+
+Data loading:
+
+```{r, warning =FALSE, message = FALSE}
+metpahlan %>%
+  metaphlan_2phyloseq(id = 'clade_name', skip_col = 1, metadata = "none") %>%
+  clean_phyloseq_sample_names(str_rm = "_DNA_cat_metaphlan_bugs_list",
+                              str_replace = "") %>%
+  physeq_add_metadata(metadata %>% readxl::read_xlsx() %>% filter(Type == "DNA"),
+                      sample_column = "Sample") -> metaphlan_ps
+```
+
+Since we are going to import a lot of humman tables let's write a function for that:
+
+```{r, message = FALSE, results=FALSE}
+import_human_2phyloseq <- function(DNA_file_path,
+                                   RNA_file_path,
+                                   type = '# Gene Family',
+                                   n_rows = Inf,
+                                   str_rm_a = "_cat_Abundance-CPM_DNA",
+                                   str_rplace_a = "",
+                                   str_rm_b = "_cat_Abundance-CPM_RNA",
+                                   str_replace_b = "_RNA",
+                                   sample_column = "Sample_ID"){
+  
+  humann_DNA_RNA_2phyloseq(DNA_humann_2df = DNA_file_path %>%
+                             humann_2df(type = type, n_rows = n_rows) %>%
+                             clean_humann_df(),
+                           RNA_humann_2df = RNA_file_path %>%
+                             humann_2df(type = type, n_rows = n_rows) %>%
+                             clean_humann_df()) %>%
+    clean_phyloseq_sample_names(str_rm = str_rm_a,
+                                str_replace = str_rplace_a) %>%
+    clean_phyloseq_sample_names(str_rm = str_rm_b,
+                                str_replace = str_replace_b) %>%
+    physeq_add_metadata(metadata %>% readxl::read_xlsx(),
+                        sample_column = sample_column) -> physeq
+  
+  return(physeq)
+}
+
+```
+
+
+```{r, message = FALSE, results=FALSE}
+humann_DNA_RNA_2phyloseq(DNA_humann_2df = pathway_DNA %>%
+                           humann_2df(type = "# Pathway", n_rows = Inf) %>%
+                           clean_humann_df(),
+                         RNA_humann_2df = pathway_RNA %>%
+                           humann_2df(type = "# Pathway", n_rows = Inf) %>%
+                           clean_humann_df()) %>%
+  clean_phyloseq_sample_names(str_rm = "_cat_Abundance-CPM_DNA",
+                              str_replace = "") %>%
+  clean_phyloseq_sample_names(str_rm = "_cat_Abundance-CPM_RNA",
+                              str_replace = "_RNA") %>%
+  physeq_add_metadata(metadata %>% readxl::read_xlsx(),
+                      sample_column = "Sample_ID") %>%
+  subset_samples(Experiment == "Exp2") -> humann_pw_ps
+
+humann_pw_ps
+```
+
+
+```{r, message = FALSE, results=FALSE}
+import_human_2phyloseq(pathway_DNA,
+                       pathway_RNA,
+                       type = "# Pathway",
+                       n_rows = Inf,
+                       str_rm_a = "_cat_Abundance-CPM_DNA",
+                       str_rplace_a = "",
+                       str_rm_b = "_cat_Abundance-CPM_RNA",
+                       str_replace_b = "_RNA",
+                       sample_column = "Sample_ID")  %>%
+  subset_samples(Experiment == "Exp2") -> humann_pw_ps_2
+```
+
+
+
+
+```{r, message = FALSE, results=FALSE}
+import_human_2phyloseq(kegg_DNA,
+                       kegg_RNA,
+                       type = '# Gene Family',
+                       n_rows = Inf,
+                       str_rm_a = "_cat_Abundance-CPM_DNA",
+                       str_rplace_a = "",
+                       str_rm_b = "_cat_Abundance-CPM_RNA",
+                       str_replace_b = "_RNA",
+                       sample_column = "Sample_ID")  %>%
+  subset_samples(Experiment == "Exp2") -> humann_kegg_ps
+```
+
+```{r, message = FALSE, results=FALSE}
+humann_DNA_RNA_2phyloseq(DNA_humann_2df = kegg_DNA %>%
+                           humann_2df(type = '# Gene Family', n_rows = Inf) %>%
+                           clean_humann_df(),
+                         RNA_humann_2df = kegg_RNA %>%
+                           humann_2df(type = '# Gene Family', n_rows = Inf) %>%
+                           clean_humann_df()) %>%
+  clean_phyloseq_sample_names(str_rm = "_cat_Abundance-CPM_DNA",
+                              str_replace = "") %>%
+  clean_phyloseq_sample_names(str_rm = "_cat_Abundance-CPM_RNA",
+                              str_replace = "_RNA") %>%
+  physeq_add_metadata(metadata %>% readxl::read_xlsx(),
+                      sample_column = "Sample_ID") %>%
+  subset_samples(Experiment == "Exp2") -> humann_kegg_ps
+
+humann_kegg_ps
+```
+
+# Ma cuisine
+
+```{r, message = FALSE, warning = FALSE}
+DNA_path=paste0("/Users/fconstan/Projects/Oral/data/DNA_humann2_pathabundance_relab.tsv")
+RNA_path=paste0("/Users/fconstan/Projects/Oral/data/RNA_humann2_pathabundance_relab.tsv")
+
+```
+
+```{r, message = FALSE, warning = FALSE}
+read_tsv(DNA_path) %>%
+  #Rename  `# Pathway` as pathway
+  rename(Gene = `# Pathway`) %>%
+  mutate(Full = Gene) %>%
+  select(Full, everything(.)) %>%
+  rename_at(vars(ends_with("_R1R2_cat_fastq_Abundance-RELAB")),
+            funs(str_replace(., "_R1R2_cat_fastq_Abundance-RELAB", "_DNA"))) %>%
+  rename_at(vars(starts_with("4")),
+            funs(str_replace(., "4", "X4"))) %>%
+  separate(Gene, c("Gene", "organism"), sep = "\\|", fill = "right") %>%
+  separate(organism, c("Genus", "Species"), sep = "\\.", fill = "right", remove = FALSE) %>%
+  mutate(organism = str_replace(organism, ".s__", "_")) %>% 
+  mutate(organism = str_replace(organism, "g__|", "")) %>% 
+  mutate(Genus = str_replace(Genus, "g__", "")) %>% 
+  mutate(Species = str_replace(Species, "s__", "")) -> DNA
+
+read_tsv(RNA_path) %>%
+  #Rename  `# Pathway` as pathway
+  rename(Gene = `# Pathway`) %>%
+  mutate(Full = Gene) %>%
+  select(Full, everything(.)) %>% 
+  rename_at(vars(ends_with("_R1R2_cat_fastq_Abundance-RELAB")),
+            funs(str_replace(., "_R1R2_cat_fastq_Abundance-RELAB", "_RNA"))) %>%
+  rename_at(vars(starts_with("4")),
+            funs(str_replace(., "4", "X4"))) %>%
+  separate(Gene, c("Gene", "organism"), sep = "\\|", fill = "right") %>%
+  separate(organism, c("Genus", "Species"), sep = "\\.", fill = "right", remove = FALSE) %>%
+  mutate(organism = str_replace(organism, ".s__", "_")) %>% 
+  mutate(organism = str_replace(organism, "g__|", "")) %>% 
+  mutate(Genus = str_replace(Genus, "g__", "")) %>% 
+  mutate(Species = str_replace(Species, "s__", "")) -> RNA
+
+```
+
+In order to only focus on species stratified info, we just need to keep data where Genus column is specified: 
+
+Same applies for metatranscriptomes (processed using humann2)
+
+```{r, message = FALSE, warning = FALSE}
+RNA %>%
+  top_n(3)
+```
+
+```{r, message = FALSE, warning = FALSE}
+RNA %>%
+  filter(!is.na(Genus)) %>%
+  top_n(10)
+```
+
+Let's combine the data from metagenomes and metatranscriptomes:
+```{r, message = FALSE, warning = FALSE}
+left_join(DNA,RNA, by= c("Full"="Full"), suffix = c("_DNA", "_RNA"), keep = FALSE) %>% #-> DNA_RNA
+  mutate_if(is.numeric, ~replace(., is.na(.), 0)) -> DNA_RNA
+# rows in x with no match in y will have NA values in the new columns
+dim(DNA); dim(RNA); dim(DNA_RNA)
+DNA_RNA %>%
+  colnames()
+```
+
+```{r, message = FALSE, warning = FALSE}
+# DNA_RNA %>%
+#   mutate(Genus_DNA = as.factor(Genus_DNA)) %>%
+#   mutate(Species_DNA = as.factor(Species_DNA)) %>%
+#   mutate(Genus_DNA, fct_explicit_na(Genus_DNA, na_level = "unclassified")) %>%
+#   mutate(Species_DNA, fct_explicit_na(Species_DNA, na_level = "unclassified"))
+DNA_RNA %>%
+  mutate(Species_DNA = if_else(is.na(Species_DNA), "unclassified", Species_DNA)) -> DNA_RNA
+
+```
+Unsurprisingly, more genes identified in metagenomes/ metatranscriptomes.
+
+# Combine everything into a phyloseq object:
+
+Clean a bit and generate a count and tax objects to be able to use phyloseq:
+
+```{r, message = FALSE, warning = FALSE}
+DNA_RNA %>%
+  select(c("Full", "Gene_DNA","organism_DNA", "Genus_DNA", "Species_DNA")) %>%
+  # separate(col=Description_DNA,
+  #      into=c("Description","EC_number"),
+  #      sep = "_EC_", remove = TRUE) %>%
+  rename(Gene = Gene_DNA ,organism = organism_DNA, Genus = Genus_DNA , Species = Species_DNA) -> tax
+
+# tax$GeneName <- tax$Gene_name
+# # str_split_fixed(tax$Gene_name, "_EC_", n = Inf)
+# tax$GeneName <- gsub("[^[:alnum:] ]", "_",tax$GeneName)
+# tax$GeneName <- gsub(" ", "_",tax$GeneName)
+
+DNA_RNA %>%
+  select_if(is.numeric) -> count
+# colnames(df) <- gsub("[^[:alnum:] ]", "",colnames(df))
+
+dim(tax); dim(count)
+```
+
+
+```{r, message = FALSE, warning = FALSE}
+physeq <- merge_phyloseq(otu_table(count %>% as.matrix(), 
+                                   taxa_are_rows = TRUE),
+                         tax_table(tax %>% as.matrix()
+                         ),
+                         sample_data(read.csv("/Users/fconstan/Projects/Oral/data/metadata_all_DNA_RNA.csv", header = TRUE ,
+                                              row.names = 1 ,check.names = TRUE,
+                                              na.strings=c("NA","NaN", ""),dec = ".", sep= ";"))
+)
+
+
+physeq
+```
+Seems to work !
+
+Adjust metadata:
+```{r, message = FALSE, warning = FALSE}
+sample_data(physeq)$SampleID = rownames(sample_data(physeq))
+
+sample_data(physeq)$SiteHealth = paste0(sample_data(physeq)$Oral_Site,"_",sample_data(physeq)$Health_status)
+
+sample_data(physeq)$Health_status = factor(sample_data(physeq)$Health_status,
+                                           levels = c("Healthy control",
+                                                      "Caries",
+                                                      "Periodontitis"))
+
+
+
+sample_data(physeq)$Oral_Site = factor(sample_data(physeq)$Oral_Site,
+                                       levels = c("SUBGINGIVAL_PLAQUE",
+                                                  "TONGUE_BIOFILM",
+                                                  "SALIVA"))
+
+sample_data(physeq)$ReadNorm = ifelse(sample_data(physeq)$Type == "DNA", 
+                                      sample_data(physeq)$DNA_non_human,
+                                      sample_data(physeq)$RNA_non_human_mRNA
+)
+
+
+physeq %>%
+  sample_data() %>%
+  data.frame() %>%
+  select(SampleID, everything()) -> meta
+
+# physeq %>%
+#   saveRDS(paste0("Oral_physeq_",table,".rds"))
+merge_phyloseq(
+  otu_table(physeq),
+  sample_data(meta),
+  tax_table(physeq)
+)  -> physeq
+
+physeq
+
+# physeq %>%
+#     subset_taxa(is.na(Genus)) %>%
+#     subset_taxa(!(grepl("^UN", Full))) -> physeq # to get rid of taxonomic stratification
+
+```
+
+get unstratified output:
+```{r message=FALSE, warnings = FALSE}
+physeq %>%
+  tax_table() %>%
+  head()
+```
+
+```{r message=FALSE, warnings = FALSE}
+physeq %>%
+  tax_table() %>%
+  tail()
+```
+
+create a reads counts phyloseq object (for alpha diversity - because it only takes integers...)
+```{r message=FALSE, warnings = FALSE}
+# https://bioconductor.org/packages/release/data/experiment/vignettes/curatedMetagenomicData/inst/doc/curatedMetagenomicData.html
+
+sweep(physeq %>%
+        otu_table() %>% 
+        magrittr::divide_by(sample_sums(physeq)), 2, 
+      sample_data(physeq)$ReadNorm , "*") %>%
+  round() %>%
+  as.data.frame() %>%
+  # replace_na(list(0))
+  select_if(~ !any(is.na(.))) -> counts
+
+counts %>%
+  as_tibble()
+```
+
+```{r message=FALSE, warnings = FALSE}
+plot(counts %>%
+       colSums(),
+     sample_data(physeq)$ReadNorm)
+```
+
+```{r message=FALSE, warnings = FALSE}
+merge_phyloseq(
+  otu_table(counts, taxa_are_rows = TRUE),
+  sample_data(physeq),
+  tax_table(physeq)
+)  -> phylo_count
+```
+
+```{r message=FALSE, warnings = FALSE}
+phylo_count %>%
+  taxa_sums() %>%
+  sort(decreasing = TRUE) %>%
+  head()
+
+phylo_count %>%
+  sample_sums() %>%
+  sort(decreasing = TRUE)  %>%
+  plot()
+
+phylo_count %>%
+  transform_sample_counts(function(x) x / sum(x) * 1000000) %>%
+  sample_sums() %>%
+  sort(decreasing = TRUE) %>%
+  plot()
+
+
+phylo_count %>%
+  rarefy_even_depth()
+```
+
+
+```{r message=FALSE, warnings = FALSE}
+physeq %>%
+  taxa_sums() %>%
+  sort(decreasing = TRUE) %>%
+  head()
+
+physeq %>%
+  sample_sums() %>%
+  sort(decreasing = TRUE)  %>%
+  plot()
+
+physeq %>%
+  transform_sample_counts(function(x) x / sum(x) * 1000000) %>%
+  sample_sums() %>%
+  sort(decreasing = TRUE) %>%
+  plot()
+
+```
+
+
+```{r message=FALSE, warnings = FALSE}
+table="pathway"
+prefix="pathway"
+
+out <- list("phylo_count" = phylo_count, "physeq" = physeq)
+
+assign(paste0(table, "_", prefix,"_physeqs"),
+       out)
+
+saveRDS(paste0(table, "_", prefix,"_physeqs") %>% get(),
+        paste0("physeq_", table, "_", prefix,".RDS"))
+
+save(list = c("phylo_count", "physeq"),
+     file = paste0("physeq_", table, "_", prefix,".RData"))
+
+# readRDS("physeq_pathway_pathway.RDS")
+# load("physeq_pathway_pathway.RData")
+```
+
+# From: <https://github.com/karkman/MetagenomeCourse2019/tree/master/R_for_Humann2>
+
+```{r message=FALSE, warnings = FALSE}
+
+DNA_path %>%
+  read_tsv() -> humann2_pathways
+
+```
+
+## Re-format the data frame from wide to long format
+```{r message=FALSE, warnings = FALSE}
+humann2_pathways %>% 
+  # head(1000) %>%
+  #Rename  `# Pathway` as pathway
+  rename(pathway = `# Pathway`) %>%
+  rename_at(vars(ends_with("_R1R2_cat_fastq_Abundance-RELAB")),
+            funs(str_replace(., "_R1R2_cat_fastq_Abundance-RELAB", "_DNA"))) %>%
+  #Gather cmp by pathway and sampleID
+  # gather(sampleID, cpm, -pathway) %>% 
+  # pivot_longer(cols = c("DNA", "RNA"),
+  #             values_to = "Abundance",
+  #             names_to = 'Type') %>%
+  pivot_longer(cols = `4012_SALIVA_DNA`:`MP9_SUB_DNA`,
+               values_to = "cpm",
+               names_to = "SampleID") %>% 
+  #Separate by sampleID and drop any extra values without warning
+  # separate(sampleID, "sampleID", sep = "_", extra = "drop") %>% 
+  #Separate pathways from organisms using |
+  separate(pathway, c("pathway", "organism"), sep = "\\|", fill = "right") %>%
+  separate(organism, c("Genus", "Species"), sep = "\\.", fill = "right", remove = FALSE) %>%
+  mutate(organism = str_replace(organism, ".s__", "_")) %>% 
+  mutate(organism = str_replace(organism, "g__|", "")) %>% 
+  mutate(Genus = str_replace(Genus, "g__", "")) %>% 
+  mutate(Genus = str_replace(Species, "s__", "")) -> humann2_pathways_long
+
+```
+
+## Continue processing the humann2 output:
+
+```{r message=FALSE, warnings = FALSE}
+# generate pathway table with no organism stratifications
+humann2_pathways_long %>%
+  filter(is.na(organism)) %>%
+  select(-organism) %>%
+  filter(!(grepl("^UN", pathway))) -> humann2_pathways_no_stratifications_long
+
+humann2_pathways_no_stratifications_long
+```
+
+```{r message=FALSE, warnings = FALSE}
+humann2_pathways_no_stratifications_long %>% group_by(SampleID) %>% summarise(Total = sum(cpm)) %>% arrange(-Total)
+```
+
+```{r message=FALSE, warnings = FALSE}
+
+# Compute pathway alpha divertities per sample
+humann2_pathways_no_stratifications_long %>%
+  group_by(SampleID) %>%
+  summarise(shannons_div = vegan::diversity(cpm),
+            invsimpson_div = vegan::diversity(cpm, index = "invsimpson"),
+            richness = sum(cpm>0)) %>%
+  arrange(richness)
+```
+
+```{r message=FALSE, warnings = FALSE}
+# Work with organism level stratifications
+humann2_pathways_long %>%
+  filter(!(is.na(organism))) %>%
+  filter(!(grepl("^UN", pathway))) -> humann2_pathway_stratifications_long
+
+humann2_pathway_stratifications_long %>% group_by(SampleID) %>% summarise(Total = sum(cpm)) %>% arrange(-Total)
+```
+
+```{r message=FALSE, warnings = FALSE}
+# number of organisms per pathway
+humann2_pathway_stratifications_long %>%
+  group_by(pathway, SampleID) %>%
+  summarise(num_organisms = length(unique(organism))) -> humann2_organisms_per_pathway 
+
+# average contributional alpha diverity (Gini simpson diversity) per pathway
+humann2_pathway_stratifications_long %>%
+  filter(cpm > 0) %>%
+  group_by(pathway, SampleID) %>%
+  summarise(shannons_div = vegan::diversity(cpm),
+            invsimpson_div = vegan::diversity(cpm, index = "invsimpson"),
+            richness = sum(cpm>0)) %>%
+  group_by(pathway) %>%
+  summarise(mean_alpha_div = mean(shannons_div),
+            median_alpha_dv = median(shannons_div)) %>%
+  arrange(-mean_alpha_div) -> humann2_pathway_alpha_div
+head(humann2_pathway_alpha_div)
+```
+
+```{r message=FALSE, warnings = FALSE}
+# add number of samples where pathway present
+humann2_pathways_no_stratifications_long %>%
+  filter(cpm > 0) %>%
+  group_by(pathway) %>%
+  summarise(n_samples = n()) %>%
+  left_join(humann2_pathway_alpha_div) %>%
+  left_join(humann2_organisms_per_pathway) -> humann2_pathway_alpha_div_with_n_samples
+
+humann2_pathway_alpha_div_with_n_samples
+```
+```{r message=FALSE, warnings = FALSE}
+humann2_pathway_alpha_div_with_n_samples %>%
+  filter(n_samples > 10) %>%
+  arrange(-mean_alpha_div) %>%
+  print(n = 20)
+```
+
+```{r message=FALSE, warnings = FALSE}
+sessionInfo()
+```
