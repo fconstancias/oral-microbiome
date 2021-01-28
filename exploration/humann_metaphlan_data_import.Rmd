@@ -1,0 +1,306 @@
+---
+title: "Oral Microbiome - humann  metaphlan  import `r Sys.Date()`"
+author: "Florentin CONSTANCIAS"
+date: "`r Sys.Date()`"
+output: 
+  html_document: 
+    toc: yes
+    toc_depth: 4
+    keep_md: yes
+---
+
+
+```{r setup, include=FALSE}
+rm(list = ls())
+
+knitr::opts_chunk$set(echo = TRUE)
+DT::datatable(matrix())
+# knitr::opts_chunk$set(dev = 'pdf')
+# knitr::purl("Mdown.Rmd")
+
+```
+
+
+```{r packages, results=TRUE, warning=TRUE, include=TRUE}
+require(tidyverse); packageVersion("tidyverse")
+require(phyloseq); packageVersion("phyloseq")
+```
+
+```{r ,results=FALSE, warning=TRUE, include=FALSE}
+biobakery_function <- ("~/Documents/GitHub/DivComAnalyses/R/phyloseq_biobakery_functions.R")
+alpha <- ("~/Documents/GitHub/DivComAnalyses/R/phyloseq_alpha.R")
+beta <- ("~/Documents/GitHub/DivComAnalyses/R/phyloseq_beta.R")
+taxa <- ("~/Documents/GitHub/DivComAnalyses/R/phyloseq_taxa_tests.R")
+norm <- ("~/Documents/GitHub/DivComAnalyses/R/phyloseq_normalisation.R")
+```
+
+```{r, message = FALSE, results=FALSE}
+sapply(c(biobakery_function, alpha, beta, taxa, norm), source, chdir = TRUE)
+```
+
+Inputs:
+
+```{r, message = FALSE, results=FALSE}
+metpahlan <- "~/Documents/GitHub/oral-microbiome/data/processed/humann/merged_metaphlan3_humann3.tsv"
+
+pathway_DNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/DNA/pathabundance_cpm_joined_tables.tsv"
+pathway_RNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/RNA/pathabundance_cpm_joined_tables.tsv"
+
+kegg_DNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/DNA/genefamilies_cpm_joined_tables_uniref90_ko_renamed_kegg-orthology.tsv"
+kegg_RNA <- "~/Documents/GitHub/oral-microbiome/data/processed/humann/RNA/genefamilies_cpm_joined_tables_uniref90_ko_renamed_kegg-orthology.tsv"
+
+l4c_DNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/DNA/genefamilies_cpm_joined_tables_uniref90_level4ec_renamed_ec.tsv"
+l4c_RNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/RNA/genefamilies_cpm_joined_tables_uniref90_level4ec_renamed_ec.tsv"
+
+go_DNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/DNA/genefamilies_cpm_joined_tables_uniref90_go_renamed_go.tsv"
+go_RNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/RNA/genefamilies_cpm_joined_tables_uniref90_go_renamed_go.tsv"
+
+infogo_DNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/DNA/genefamilies_cpm_joined_tables_uniref90_go_renamed_infogo1000.tsv"
+infogo_RNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/RNA/genefamilies_cpm_joined_tables_uniref90_go_renamed_infogo1000.tsv"
+
+
+metac_DNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/DNA/genefamilies_cpm_joined_tables_uniref90_rxn_renamed_metacyc-rxn.tsv"
+metac_RNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/RNA/genefamilies_cpm_joined_tables_uniref90_rxn_renamed_metacyc-rxn.tsv"
+
+pfam_DNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/DNA/genefamilies_cpm_joined_tables_uniref90_pfam_renamed_pfam.tsv"
+pfam_RNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/RNA/genefamilies_cpm_joined_tables_uniref90_pfam_renamed_pfam.tsv"
+
+metadata_path <- "~/Documents/GitHub/oral-microbiome/data/metadata_all_DNA_RNA.xlsx"
+```
+
+Data loading:
+
+```{r, warning =FALSE, message = FALSE}
+metadata_path %>% readxl::read_xlsx(col_types = c(rep("text", 7),rep("numeric", 11),rep("text", 5), rep("numeric", 13))) -> metadata
+```
+
+Since we are going to import a lot of humman tables let's write a function for that:
+
+```{r, message = FALSE, results=FALSE}
+import_human_2phyloseq <- function(DNA_file_path,
+                                   RNA_file_path,
+                                   type = '# Gene Family',
+                                   n_rows = Inf,
+                                   str_rm_a = "_cat_Abundance-CPM_DNA",
+                                   str_rplace_a = "",
+                                   str_rm_b = "_cat_Abundance-CPM_RNA",
+                                   str_replace_b = "_RNA",
+                                   sample_column = "Sample_ID"){
+  
+  humann_DNA_RNA_2phyloseq(DNA_humann_2df = DNA_file_path %>%
+                             humann_2df(type = type, n_rows = n_rows) %>%
+                             clean_humann_df(),
+                           RNA_humann_2df = RNA_file_path %>%
+                             humann_2df(type = type, n_rows = n_rows) %>%
+                             clean_humann_df()) %>%
+    clean_phyloseq_sample_names(str_rm = str_rm_a,
+                                str_replace = str_rplace_a) %>%
+    clean_phyloseq_sample_names(str_rm = str_rm_b,
+                                str_replace = str_replace_b) %>%
+    physeq_add_metadata(metadata,
+                        sample_column = sample_column) -> physeq
+  
+  return(physeq)
+}
+
+physeq_count_normalize <- function(physeq,
+                                   sample_idx = "Sample_ID",
+                                   value_idx = "ReadNorm",
+                                   return_both = FALSE){
+  
+  HTSSIP::OTU_qPCR_trans(physeq, 
+                         physeq %>% 
+                           sample_data() %>% 
+                           data.frame(), 
+                         sample_idx = sample_idx, value_idx = value_idx) -> physeq_count
+  
+  if(return_both == TRUE){
+    out <- list("physeq" = physeq,
+                "physeq_count" = physeq_count)
+    return(out)
+  }else{
+    return(physeq_count)
+  }
+}
+
+save_object_name <- function(object,
+                             path = paste0(here::here(), "/data/processed/"),
+                             return_input = FALSE){
+  saveRDS(object,
+          paste0(path, "/", deparse(substitute(object)), ".RDS"))
+  if(return_input == TRUE){
+    return(object)
+  }
+}
+
+```
+
+```{r, warning =FALSE, message = FALSE}
+metpahlan %>%
+  metaphlan_2phyloseq(id = 'clade_name', skip_col = 1, metadata = "none") %>%
+  clean_phyloseq_sample_names(str_rm = "_DNA_cat_metaphlan_bugs_list",
+                              str_replace = "") %>%
+  physeq_add_metadata(metadata %>% filter(Type == "DNA"),
+                      sample_column = "Sample") %>%
+  physeq_count_normalize(return_both = TRUE)  -> metaphlan_ps
+
+metaphlan_ps
+
+save_object_name(metaphlan_ps)
+```
+
+```{r, message = FALSE, results=FALSE}
+import_human_2phyloseq(pathway_DNA,
+                       pathway_RNA,
+                       type = "# Pathway",
+                       n_rows = Inf,
+                       str_rm_a = "_cat_Abundance-CPM_DNA",
+                       str_rplace_a = "",
+                       str_rm_b = "_cat_Abundance-CPM_RNA",
+                       str_replace_b = "_RNA",
+                       sample_column = "Sample_ID")  %>%
+  subset_samples(Experiment == "Exp2") %>%
+  physeq_count_normalize(return_both = TRUE) -> humann_pw_ps
+
+humann_pw_ps
+
+save_object_name(humann_pw_ps)
+```
+
+
+```{r, message = FALSE, results=FALSE}
+import_human_2phyloseq(kegg_DNA,
+                       kegg_RNA,
+                       type = '# Gene Family',
+                       n_rows = Inf,
+                       str_rm_a = "_cat_Abundance-CPM_DNA",
+                       str_rplace_a = "",
+                       str_rm_b = "_cat_Abundance-CPM_RNA",
+                       str_replace_b = "_RNA",
+                       sample_column = "Sample_ID")  %>%
+  subset_samples(Experiment == "Exp2") %>%
+  physeq_count_normalize(return_both = TRUE)  -> humann_kegg_ps
+
+humann_kegg_ps
+
+save_object_name(humann_kegg_ps)
+```
+
+```{r, message = FALSE, results=FALSE}
+import_human_2phyloseq(l4c_DNA,
+                       l4c_RNA,
+                       type = '# Gene Family',
+                       n_rows = Inf,
+                       str_rm_a = "_cat_Abundance-CPM_DNA",
+                       str_rplace_a = "",
+                       str_rm_b = "_cat_Abundance-CPM_RNA",
+                       str_replace_b = "_RNA",
+                       sample_column = "Sample_ID")  %>%
+  subset_samples(Experiment == "Exp2") %>%
+  physeq_count_normalize(return_both = TRUE)  -> humann_l4c_ps
+
+humann_l4c_ps
+
+save_object_name(humann_l4c_ps)
+```
+
+
+```{r, message = FALSE, results=FALSE}
+import_human_2phyloseq(go_DNA,
+                       go_RNA,
+                       type = '# Gene Family',
+                       n_rows = Inf,
+                       str_rm_a = "_cat_Abundance-CPM_DNA",
+                       str_rplace_a = "",
+                       str_rm_b = "_cat_Abundance-CPM_RNA",
+                       str_replace_b = "_RNA",
+                       sample_column = "Sample_ID")  %>%
+  subset_samples(Experiment == "Exp2") %>%
+  physeq_count_normalize(return_both = TRUE)  -> humann_go_ps
+
+humann_go_ps
+
+save_object_name(humann_go_ps)
+```
+
+```{r, message = FALSE, results=FALSE}
+import_human_2phyloseq(infogo_DNA,
+                       infogo_RNA,
+                       type = '# Gene Family',
+                       n_rows = Inf,
+                       str_rm_a = "_cat_Abundance-CPM_DNA",
+                       str_rplace_a = "",
+                       str_rm_b = "_cat_Abundance-CPM_RNA",
+                       str_replace_b = "_RNA",
+                       sample_column = "Sample_ID")  %>%
+  subset_samples(Experiment == "Exp2") %>%
+  physeq_count_normalize(return_both = TRUE)  -> humann_infogo_ps
+
+humann_infogo_ps
+
+save_object_name(humann_infogo_ps)
+```
+
+```{r, message = FALSE, results=FALSE}
+import_human_2phyloseq(metac_DNA,
+                       metac_RNA,
+                       type = '# Gene Family',
+                       n_rows = Inf,
+                       str_rm_a = "_cat_Abundance-CPM_DNA",
+                       str_rplace_a = "",
+                       str_rm_b = "_cat_Abundance-CPM_RNA",
+                       str_replace_b = "_RNA",
+                       sample_column = "Sample_ID")  %>%
+  subset_samples(Experiment == "Exp2") %>%
+  physeq_count_normalize(return_both = TRUE)  -> humann_metac_ps
+
+humann_metac_ps
+
+save_object_name(humann_metac_ps)
+```
+
+```{r, message = FALSE, results=FALSE}
+import_human_2phyloseq(pfam_DNA,
+                       pfam_RNA,
+                       type = '# Gene Family',
+                       n_rows = Inf,
+                       str_rm_a = "_cat_Abundance-CPM_DNA",
+                       str_rplace_a = "",
+                       str_rm_b = "_cat_Abundance-CPM_RNA",
+                       str_replace_b = "_RNA",
+                       sample_column = "Sample_ID")  %>%
+  subset_samples(Experiment == "Exp2") %>%
+  physeq_count_normalize(return_both = TRUE)  -> humann_pfam_ps
+
+humann_pfam_ps
+
+save_object_name(humann_pfam_ps)
+```
+
+Would be great to apply this directly on the two lists
+<https://stackoverflow.com/questions/19002378/applying-a-function-to-two-lists>
+```{r, message = FALSE, results=FALSE}
+# list("kegg_DNA" = kegg_DNA, 
+#               "l4c_DNA" = l4c_DNA) -> list_DNA
+# list("kegg_RNA" = kegg_RNA, 
+#               "l4c_RNA" = l4c_RNA) -> list_RNA
+# 
+#   mapply(function(DNA_file_path,RNA_file_path) {
+#   sapply(length(list_RNA), FUN = import_human_2phyloseq(DNA_file_path = list_DNA[[row]],RNA_file_path=list_RNA[[row]], type = '# Gene Family', n_rows = 10))
+#   }, DNA_file_path=list_DNA, RNA_file_path=list_RNA) -> out
+```
+
+save RDS objects
+```{r message=FALSE, warnings = FALSE}
+paste0(here::here(),
+       "/data/processed/",
+       "humann_metaphlan_import",
+       "_",
+       format(Sys.time(), "%Y%b%d")
+       ,".RData") %>% save.image()
+```
+
+
+```{r message=FALSE, warnings = FALSE}
+sessionInfo()
+```

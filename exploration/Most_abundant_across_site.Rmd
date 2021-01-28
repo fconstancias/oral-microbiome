@@ -1,5 +1,5 @@
 ---
-title: "Oral Microbiome - Predominant All sites `r Sys.Date()`"
+title: "Oral Microbiome - Most abundant across site `r Sys.Date()`"
 author: "Florentin CONSTANCIAS"
 date: "`r Sys.Date()`"
 output: 
@@ -30,6 +30,7 @@ text-align: center;
 ```{r setup, include=FALSE}
 rm(list = ls())
 
+knitr::opts_knit$set(root.dir = "/Users/fconstan/Projects/Oral/") 
 knitr::opts_chunk$set(echo = TRUE)
 DT::datatable(matrix())
 # knitr::opts_chunk$set(dev = 'pdf')
@@ -40,152 +41,13 @@ DT::datatable(matrix())
 
 ```{r packages, results=FALSE, warning=TRUE, include=FALSE}
 require(tidyverse); packageVersion("tidyverse")
+require(speedyseq); packageVersion("speedyseq")
 ```
 
-```{r packages, results=FALSE, warning=TRUE, include=FALSE}
-biobakery_function <- ("~/Documents/GitHub/DivComAnalyses/R/phyloseq_biobakery_functions.R")
-alpha <- ("~/Documents/GitHub/DivComAnalyses/R/phyloseq_alpha.R")
-beta <- ("~/Documents/GitHub/DivComAnalyses/R/phyloseq_beta.R")
-taxa <- ("~/Documents/GitHub/DivComAnalyses/R/phyloseq_taxa_tests.R")
-```
-
-```{r packages, results=FALSE, warning=TRUE, include=FALSE}
-sapply(c(biobakery_function, alpha, beta, taxa), source, chdir = TRUE)
-```
-
-Inputs:
+Define working directory:
 
 ```{r, message = FALSE, results=FALSE}
-metpahlan <- "~/Documents/GitHub/oral-microbiome/data/processed/humann/merged_metaphlan3_humann3.tsv"
-
-pathway_DNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/DNA/pathabundance_cpm_joined_tables.tsv"
-pathway_RNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/RNA/pathabundance_cpm_joined_tables.tsv"
-
-kegg_DNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/DNA/genefamilies_cpm_joined_tables_uniref90_ko_renamed_kegg-orthology.tsv"
-kegg_RNA <- "~/Documents/GitHub/oral-microbiome/data/processed/humann/RNA/genefamilies_cpm_joined_tables_uniref90_ko_renamed_kegg-orthology.tsv"
-
-l4c_DNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/DNA/genefamilies_joined_tables_uniref90_level4ec_renamed_ec.tsv"
-l4c_RNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/RNA/genefamilies_joined_tables_uniref90_level4ec_renamed_ec.tsv"
-
-go_DNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/DNA/genefamilies_cpm_joined_tables_uniref90_go_renamed_go.tsv"
-go_RNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/RNA/genefamilies_cpm_joined_tables_uniref90_go_renamed_go.tsv"
-
-metac_DNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/DNA/genefamilies_cpm_joined_tables_uniref90_rxn_renamed_metacyc-rxn.tsv"
-metac_RNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/RNA/genefamilies_cpm_joined_tables_uniref90_rxn_renamed_metacyc-rxn.tsv"
-
-pfam_DNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/DNA/genefamilies_joined_tables_uniref90_pfam_renamed_pfam.tsv"
-pfam_RNA <- "~/Documents/GitHub/oral-microbiome//data/processed/humann/RNA/genefamilies_joined_tables_uniref90_pfam_renamed_pfam.tsv"
-
-metadata <- "~/Documents/GitHub/oral-microbiome/data/metadata_all_DNA_RNA.xlsx"
-```
-
-Data loading:
-
-```{r, warning =FALSE, message = FALSE}
-metpahlan %>%
-  metaphlan_2phyloseq(id = 'clade_name', skip_col = 1, metadata = "none") %>%
-  clean_phyloseq_sample_names(str_rm = "_DNA_cat_metaphlan_bugs_list",
-                              str_replace = "") %>%
-  physeq_add_metadata(metadata %>% readxl::read_xlsx() %>% filter(Type == "DNA"),
-                      sample_column = "Sample") -> metaphlan_ps
-```
-
-Since we are going to import a lot of humman tables let's write a function for that:
-
-```{r, message = FALSE, results=FALSE}
-import_human_2phyloseq <- function(DNA_file_path,
-                                   RNA_file_path,
-                                   type = '# Gene Family',
-                                   n_rows = Inf,
-                                   str_rm_a = "_cat_Abundance-CPM_DNA",
-                                   str_rplace_a = "",
-                                   str_rm_b = "_cat_Abundance-CPM_RNA",
-                                   str_replace_b = "_RNA",
-                                   sample_column = "Sample_ID"){
-  
-  humann_DNA_RNA_2phyloseq(DNA_humann_2df = DNA_file_path %>%
-                             humann_2df(type = type, n_rows = n_rows) %>%
-                             clean_humann_df(),
-                           RNA_humann_2df = RNA_file_path %>%
-                             humann_2df(type = type, n_rows = n_rows) %>%
-                             clean_humann_df()) %>%
-    clean_phyloseq_sample_names(str_rm = str_rm_a,
-                                str_replace = str_rplace_a) %>%
-    clean_phyloseq_sample_names(str_rm = str_rm_b,
-                                str_replace = str_replace_b) %>%
-    physeq_add_metadata(metadata %>% readxl::read_xlsx(),
-                        sample_column = sample_column) -> physeq
-  
-  return(physeq)
-}
-
-```
-
-
-```{r, message = FALSE, results=FALSE}
-humann_DNA_RNA_2phyloseq(DNA_humann_2df = pathway_DNA %>%
-                           humann_2df(type = "# Pathway", n_rows = Inf) %>%
-                           clean_humann_df(),
-                         RNA_humann_2df = pathway_RNA %>%
-                           humann_2df(type = "# Pathway", n_rows = Inf) %>%
-                           clean_humann_df()) %>%
-  clean_phyloseq_sample_names(str_rm = "_cat_Abundance-CPM_DNA",
-                              str_replace = "") %>%
-  clean_phyloseq_sample_names(str_rm = "_cat_Abundance-CPM_RNA",
-                              str_replace = "_RNA") %>%
-  physeq_add_metadata(metadata %>% readxl::read_xlsx(),
-                      sample_column = "Sample_ID") %>%
-  subset_samples(Experiment == "Exp2") -> humann_pw_ps
-
-humann_pw_ps
-```
-
-
-```{r, message = FALSE, results=FALSE}
-import_human_2phyloseq(pathway_DNA,
-                       pathway_RNA,
-                       type = "# Pathway",
-                       n_rows = Inf,
-                       str_rm_a = "_cat_Abundance-CPM_DNA",
-                       str_rplace_a = "",
-                       str_rm_b = "_cat_Abundance-CPM_RNA",
-                       str_replace_b = "_RNA",
-                       sample_column = "Sample_ID")  %>%
-  subset_samples(Experiment == "Exp2") -> humann_pw_ps_2
-```
-
-
-
-
-```{r, message = FALSE, results=FALSE}
-import_human_2phyloseq(kegg_DNA,
-                       kegg_RNA,
-                       type = '# Gene Family',
-                       n_rows = Inf,
-                       str_rm_a = "_cat_Abundance-CPM_DNA",
-                       str_rplace_a = "",
-                       str_rm_b = "_cat_Abundance-CPM_RNA",
-                       str_replace_b = "_RNA",
-                       sample_column = "Sample_ID")  %>%
-  subset_samples(Experiment == "Exp2") -> humann_kegg_ps
-```
-
-```{r, message = FALSE, results=FALSE}
-humann_DNA_RNA_2phyloseq(DNA_humann_2df = kegg_DNA %>%
-                           humann_2df(type = '# Gene Family', n_rows = Inf) %>%
-                           clean_humann_df(),
-                         RNA_humann_2df = kegg_RNA %>%
-                           humann_2df(type = '# Gene Family', n_rows = Inf) %>%
-                           clean_humann_df()) %>%
-  clean_phyloseq_sample_names(str_rm = "_cat_Abundance-CPM_DNA",
-                              str_replace = "") %>%
-  clean_phyloseq_sample_names(str_rm = "_cat_Abundance-CPM_RNA",
-                              str_replace = "_RNA") %>%
-  physeq_add_metadata(metadata %>% readxl::read_xlsx(),
-                      sample_column = "Sample_ID") %>%
-  subset_samples(Experiment == "Exp2") -> humann_kegg_ps
-
-humann_kegg_ps
+setwd("/Users/fconstan/Projects/Oral/")
 ```
 
 # Ma cuisine
@@ -315,9 +177,9 @@ sample_data(physeq)$SampleID = rownames(sample_data(physeq))
 sample_data(physeq)$SiteHealth = paste0(sample_data(physeq)$Oral_Site,"_",sample_data(physeq)$Health_status)
 
 sample_data(physeq)$Health_status = factor(sample_data(physeq)$Health_status,
-                                           levels = c("Healthy control",
-                                                      "Caries",
-                                                      "Periodontitis"))
+                                          levels = c("Healthy control",
+                                                               "Caries",
+                                                               "Periodontitis"))
 
 
 
