@@ -30,7 +30,7 @@ text-align: center;
 ```{r setup, include=FALSE}
 rm(list = ls())
 
-knitr::opts_knit$set(root.dir = "/Users/fconstan/Projects/Oral/") 
+# knitr::opts_knit$set(root.dir = "/Users/fconstan/Projects/Oral/") 
 knitr::opts_chunk$set(echo = TRUE)
 DT::datatable(matrix())
 # knitr::opts_chunk$set(dev = 'pdf')
@@ -39,67 +39,121 @@ DT::datatable(matrix())
 ```
 
 
-```{r packages, results=FALSE, warning=TRUE, include=FALSE}
+```{r packages, results=TRUE, warning=TRUE, include=FALSE}
 require(tidyverse); packageVersion("tidyverse")
-require(speedyseq); packageVersion("speedyseq")
+require(phyloseq); packageVersion("phyloseq")
 ```
 
-Define working directory:
+# Fin most abundant taxa across sites:
+
+```{r, message = FALSE, warning = FALSE}
+biobakery_function <- ("~/Documents/GitHub/DivComAnalyses/R/phyloseq_biobakery_functions.R")
+alpha <- ("~/Documents/GitHub/DivComAnalyses/R/phyloseq_alpha.R")
+beta <- ("~/Documents/GitHub/DivComAnalyses/R/phyloseq_beta.R")
+taxa <- ("~/Documents/GitHub/DivComAnalyses/R/phyloseq_taxa_tests.R")
+norm <- ("~/Documents/GitHub/DivComAnalyses/R/phyloseq_normalisation.R")
+heat <- ("~/Documents/GitHub/DivComAnalyses/R/phyloseq_heatmap.R")
+```
+
+```{r, message = FALSE, results= "hide", warning = FALSE, include = TRUE}
+sapply(c(biobakery_function, alpha, beta, taxa, norm, heat), source, chdir = TRUE)
+```
 
 ```{r, message = FALSE, results=FALSE}
-setwd("/Users/fconstan/Projects/Oral/")
-```
-
-# Ma cuisine
-
-```{r, message = FALSE, warning = FALSE}
-DNA_path=paste0("/Users/fconstan/Projects/Oral/data/DNA_humann2_pathabundance_relab.tsv")
-RNA_path=paste0("/Users/fconstan/Projects/Oral/data/RNA_humann2_pathabundance_relab.tsv")
-
-```
-
-```{r, message = FALSE, warning = FALSE}
-read_tsv(DNA_path) %>%
-  #Rename  `# Pathway` as pathway
-  rename(Gene = `# Pathway`) %>%
-  mutate(Full = Gene) %>%
-  select(Full, everything(.)) %>%
-  rename_at(vars(ends_with("_R1R2_cat_fastq_Abundance-RELAB")),
-            funs(str_replace(., "_R1R2_cat_fastq_Abundance-RELAB", "_DNA"))) %>%
-  rename_at(vars(starts_with("4")),
-            funs(str_replace(., "4", "X4"))) %>%
-  separate(Gene, c("Gene", "organism"), sep = "\\|", fill = "right") %>%
-  separate(organism, c("Genus", "Species"), sep = "\\.", fill = "right", remove = FALSE) %>%
-  mutate(organism = str_replace(organism, ".s__", "_")) %>% 
-  mutate(organism = str_replace(organism, "g__|", "")) %>% 
-  mutate(Genus = str_replace(Genus, "g__", "")) %>% 
-  mutate(Species = str_replace(Species, "s__", "")) -> DNA
-
-read_tsv(RNA_path) %>%
-  #Rename  `# Pathway` as pathway
-  rename(Gene = `# Pathway`) %>%
-  mutate(Full = Gene) %>%
-  select(Full, everything(.)) %>% 
-  rename_at(vars(ends_with("_R1R2_cat_fastq_Abundance-RELAB")),
-            funs(str_replace(., "_R1R2_cat_fastq_Abundance-RELAB", "_RNA"))) %>%
-  rename_at(vars(starts_with("4")),
-            funs(str_replace(., "4", "X4"))) %>%
-  separate(Gene, c("Gene", "organism"), sep = "\\|", fill = "right") %>%
-  separate(organism, c("Genus", "Species"), sep = "\\.", fill = "right", remove = FALSE) %>%
-  mutate(organism = str_replace(organism, ".s__", "_")) %>% 
-  mutate(organism = str_replace(organism, "g__|", "")) %>% 
-  mutate(Genus = str_replace(Genus, "g__", "")) %>% 
-  mutate(Species = str_replace(Species, "s__", "")) -> RNA
+input <- list(metpahlan_ps = "~/Documents/GitHub/oral-microbiome/data/processed/metaphlan_ps.RDS",
+              motus_ps = "~/Documents/GitHub/oral-microbiome/data/processed/motus/physeq.RDS",
+              pathway_ps = "~/Documents/GitHub/oral-microbiome/data/processed/humann_pw_ps.RDS",
+              kegg_ps = "~/Documents/GitHub/oral-microbiome/data/processed/humann_kegg_ps.RDS",
+              l4c_ps = "~/Documents/GitHub/oral-microbiome/data/processed/humann_l4c_ps.RDS",
+              go_ps = "~/Documents/GitHub/oral-microbiome/data/processed/humann_go_ps.RDS",
+              infogo_ps = "~/Documents/GitHub/oral-microbiome/data/processed/humann_infogo_ps.RDS",
+              metac_ps = "~/Documents/GitHub/oral-microbiome/data/processed/humann_metac_ps.RDS",
+              pfam_ps = "~/Documents/GitHub/oral-microbiome/data/processed/humann_pfam_ps.RDS")
 
 ```
 
-In order to only focus on species stratified info, we just need to keep data where Genus column is specified: 
+Data loading:
 
-Same applies for metatranscriptomes (processed using humann2)
+```{r, warning =FALSE, message = FALSE}
+purrr::map(input, 
+           readRDS) -> objects
+```
+
+Investigate most abundant taxa over sites:
 
 ```{r, message = FALSE, warning = FALSE}
-RNA %>%
-  top_n(3)
+sample_data(objects$metpahlan_ps$physeq)$Site_Health <- paste0(sample_data(objects$metpahlan_ps$physeq)$Oral_Site,
+                                                               "_",
+                                                               sample_data(objects$metpahlan_ps$physeq)$Health_status)
+```
+
+```{r, message = FALSE, warning = FALSE}
+
+physeq_most_abundant <- function(physeq,
+                                 group_var,
+                                 ntax = 20,
+                                 tax_level = "Species"){
+  
+  require(tidyverse); require(phyloseq)
+  
+  taxa_top_all = NULL  
+  
+  for(tp in physeq %>% 
+      get_variable(group_var) %>%
+      unique()){
+    # print(tp)
+    prune_samples(get_variable(physeq, group_var) == tp,
+                  physeq) %>%
+      fantaxtic::get_top_taxa(n = ntax, relative = FALSE, discard_other = TRUE) -> tmp2
+    
+    as(tax_table(tmp2), "matrix") %>%
+      data.frame() %>%
+      # dplyr::filter(grepl("ose",Gene_name)) %>%
+      pull(tax_level) -> spc
+    
+    c(spc, taxa_top_all) %>%
+      # discard(is.na)  %>%
+      unique() %>%
+      sort() -> taxa_top_all
+    
+    return(taxa_top_all)
+  }
+}
+
+
+physeq_most_abundant(physeq = objects$metpahlan_ps$physeq,
+                     group_var = "Site_Health",
+                     ntax = 10) -> most_abundant
+
+most_abundant
+```
+
+Heatmap those:
+```{r, message = FALSE, warning = FALSE}
+objects$metpahlan_ps$physeq %>%
+  microbiome::transform('compositional') %>%
+  phyloseq::subset_taxa(Species %in% most_abundant) %>%
+  phyloseq_ampvis_heatmap(transform = "identity",
+                          group_by = "Subject",#treatment
+                          facet_by = c("Oral_Site", "Health_status", "Subject"),
+                          tax_show = 100,
+                          # order_x_by = "cluster",
+                          min_abundance = 0,
+                          tax_aggregate = "Species",
+                          tax_add = NULL,
+                          plot_na = FALSE,
+                          color_vector = c("white", "red"),
+                          plot_colorscale = "sqrt",
+                          plot_legendbreaks = c(1, 10, 20)
+  ) -> p
+
+p + facet_grid(. ~ Oral_Site + Health_status, scales = "free", space = "free") + 
+  scale_fill_viridis_c(breaks = c(0,  0.01, 1, 10, 50, 75, 100), 
+                       labels = c(0,  0.01, 1, 10, 50, 75, 100), 
+                       trans = scales::pseudo_log_trans(sigma = 0.01))  + 
+  theme_classic() + 
+      theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 6)) + 
+      theme(axis.text.y = element_text(angle = 0,  size = 8))
 ```
 
 ```{r, message = FALSE, warning = FALSE}
@@ -177,9 +231,9 @@ sample_data(physeq)$SampleID = rownames(sample_data(physeq))
 sample_data(physeq)$SiteHealth = paste0(sample_data(physeq)$Oral_Site,"_",sample_data(physeq)$Health_status)
 
 sample_data(physeq)$Health_status = factor(sample_data(physeq)$Health_status,
-                                          levels = c("Healthy control",
-                                                               "Caries",
-                                                               "Periodontitis"))
+                                           levels = c("Healthy control",
+                                                      "Caries",
+                                                      "Periodontitis"))
 
 
 
