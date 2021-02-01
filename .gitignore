@@ -55,3 +55,4 @@ data/processed/motus/motus.merged_species.txt
 data/processed/motus/mOTUS_tree.ref_pref.iqtree.treefile
 scripts/.DS_Store
 *.DS_Store
+*.pptx

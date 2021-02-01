@@ -79,6 +79,8 @@ purrr::map(input,
            readRDS) -> objects
 ```
 
+# metaphlan Taxa:
+
 Investigate most abundant taxa over sites:
 
 ```{r, message = FALSE, warning = FALSE}
@@ -91,7 +93,7 @@ sample_data(objects$metpahlan_ps$physeq)$Site_Health <- paste0(sample_data(objec
 
 physeq_most_abundant <- function(physeq,
                                  group_var,
-                                 ntax = 20,
+                                 ntax = 10,
                                  tax_level = "Species"){
   
   require(tidyverse); require(phyloseq)
@@ -104,7 +106,9 @@ physeq_most_abundant <- function(physeq,
     # print(tp)
     prune_samples(get_variable(physeq, group_var) == tp,
                   physeq) %>%
-      fantaxtic::get_top_taxa(n = ntax, relative = FALSE, discard_other = TRUE) -> tmp2
+      fantaxtic::get_top_taxa(n = ntax, 
+                              relative = FALSE, 
+                              discard_other = TRUE) -> tmp2
     
     as(tax_table(tmp2), "matrix") %>%
       data.frame() %>%
@@ -116,376 +120,544 @@ physeq_most_abundant <- function(physeq,
       unique() %>%
       sort() -> taxa_top_all
     
-    return(taxa_top_all)
   }
+  return(taxa_top_all)
 }
 
 
 physeq_most_abundant(physeq = objects$metpahlan_ps$physeq,
                      group_var = "Site_Health",
-                     ntax = 10) -> most_abundant
+                     ntax = 3) -> most_abundant
 
 most_abundant
 ```
 
 Heatmap those:
-```{r, message = FALSE, warning = FALSE}
+```{r fig.height = 5 , fig.width = 12 , message=FALSE}
 objects$metpahlan_ps$physeq %>%
-  microbiome::transform('compositional') %>%
+  transform_sample_counts(function(x) x/sum(x) * 100) %>%
   phyloseq::subset_taxa(Species %in% most_abundant) %>%
-  phyloseq_ampvis_heatmap(transform = "identity",
+  phyloseq_ampvis_heatmap(transform = FALSE,
                           group_by = "Subject",#treatment
                           facet_by = c("Oral_Site", "Health_status", "Subject"),
-                          tax_show = 100,
-                          # order_x_by = "cluster",
-                          min_abundance = 0,
+                          ntax = 100,
                           tax_aggregate = "Species",
-                          tax_add = NULL,
-                          plot_na = FALSE,
-                          color_vector = c("white", "red"),
-                          plot_colorscale = "sqrt",
-                          plot_legendbreaks = c(1, 10, 20)
-  ) -> p
+                          tax_add = NULL) -> p
 
 p + facet_grid(. ~ Oral_Site + Health_status, scales = "free", space = "free") + 
-  scale_fill_viridis_c(breaks = c(0,  0.01, 1, 10, 50, 75, 100), 
-                       labels = c(0,  0.01, 1, 10, 50, 75, 100), 
-                       trans = scales::pseudo_log_trans(sigma = 0.01))  + 
+  scale_fill_viridis_c(breaks = c(0,  0.01, 1, 10, 25, 50, 75, 100), 
+                       labels = c(0,  0.01, 1, 10, 25,50, 75, 100), 
+                       trans = scales::pseudo_log_trans(sigma = 0.1))  + 
   theme_classic() + 
-      theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 6)) + 
-      theme(axis.text.y = element_text(angle = 0,  size = 8))
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 6)) + 
+  theme(axis.text.y = element_text(angle = 0,  size = 8))
 ```
 
-```{r, message = FALSE, warning = FALSE}
-RNA %>%
-  filter(!is.na(Genus)) %>%
-  top_n(10)
-```
+What are those species doing:
 
-Let's combine the data from metagenomes and metatranscriptomes:
-```{r, message = FALSE, warning = FALSE}
-left_join(DNA,RNA, by= c("Full"="Full"), suffix = c("_DNA", "_RNA"), keep = FALSE) %>% #-> DNA_RNA
-  mutate_if(is.numeric, ~replace(., is.na(.), 0)) -> DNA_RNA
-# rows in x with no match in y will have NA values in the new columns
-dim(DNA); dim(RNA); dim(DNA_RNA)
-DNA_RNA %>%
-  colnames()
-```
+# PAthway
 
-```{r, message = FALSE, warning = FALSE}
-# DNA_RNA %>%
-#   mutate(Genus_DNA = as.factor(Genus_DNA)) %>%
-#   mutate(Species_DNA = as.factor(Species_DNA)) %>%
-#   mutate(Genus_DNA, fct_explicit_na(Genus_DNA, na_level = "unclassified")) %>%
-#   mutate(Species_DNA, fct_explicit_na(Species_DNA, na_level = "unclassified"))
-DNA_RNA %>%
-  mutate(Species_DNA = if_else(is.na(Species_DNA), "unclassified", Species_DNA)) -> DNA_RNA
-
-```
-Unsurprisingly, more genes identified in metagenomes/ metatranscriptomes.
-
-# Combine everything into a phyloseq object:
-
-Clean a bit and generate a count and tax objects to be able to use phyloseq:
-
-```{r, message = FALSE, warning = FALSE}
-DNA_RNA %>%
-  select(c("Full", "Gene_DNA","organism_DNA", "Genus_DNA", "Species_DNA")) %>%
-  # separate(col=Description_DNA,
-  #      into=c("Description","EC_number"),
-  #      sep = "_EC_", remove = TRUE) %>%
-  rename(Gene = Gene_DNA ,organism = organism_DNA, Genus = Genus_DNA , Species = Species_DNA) -> tax
-
-# tax$GeneName <- tax$Gene_name
-# # str_split_fixed(tax$Gene_name, "_EC_", n = Inf)
-# tax$GeneName <- gsub("[^[:alnum:] ]", "_",tax$GeneName)
-# tax$GeneName <- gsub(" ", "_",tax$GeneName)
-
-DNA_RNA %>%
-  select_if(is.numeric) -> count
-# colnames(df) <- gsub("[^[:alnum:] ]", "",colnames(df))
-
-dim(tax); dim(count)
-```
-
-
-```{r, message = FALSE, warning = FALSE}
-physeq <- merge_phyloseq(otu_table(count %>% as.matrix(), 
-                                   taxa_are_rows = TRUE),
-                         tax_table(tax %>% as.matrix()
-                         ),
-                         sample_data(read.csv("/Users/fconstan/Projects/Oral/data/metadata_all_DNA_RNA.csv", header = TRUE ,
-                                              row.names = 1 ,check.names = TRUE,
-                                              na.strings=c("NA","NaN", ""),dec = ".", sep= ";"))
-)
-
-
-physeq
-```
-Seems to work !
-
-Adjust metadata:
-```{r, message = FALSE, warning = FALSE}
-sample_data(physeq)$SampleID = rownames(sample_data(physeq))
-
-sample_data(physeq)$SiteHealth = paste0(sample_data(physeq)$Oral_Site,"_",sample_data(physeq)$Health_status)
-
-sample_data(physeq)$Health_status = factor(sample_data(physeq)$Health_status,
-                                           levels = c("Healthy control",
-                                                      "Caries",
-                                                      "Periodontitis"))
-
-
-
-sample_data(physeq)$Oral_Site = factor(sample_data(physeq)$Oral_Site,
-                                       levels = c("SUBGINGIVAL_PLAQUE",
-                                                  "TONGUE_BIOFILM",
-                                                  "SALIVA"))
-
-sample_data(physeq)$ReadNorm = ifelse(sample_data(physeq)$Type == "DNA", 
-                                      sample_data(physeq)$DNA_non_human,
-                                      sample_data(physeq)$RNA_non_human_mRNA
-)
-
-
-physeq %>%
-  sample_data() %>%
-  data.frame() %>%
-  select(SampleID, everything()) -> meta
-
-# physeq %>%
-#   saveRDS(paste0("Oral_physeq_",table,".rds"))
-merge_phyloseq(
-  otu_table(physeq),
-  sample_data(meta),
-  tax_table(physeq)
-)  -> physeq
-
-physeq
-
-# physeq %>%
-#     subset_taxa(is.na(Genus)) %>%
-#     subset_taxa(!(grepl("^UN", Full))) -> physeq # to get rid of taxonomic stratification
-
-```
-
-get unstratified output:
 ```{r message=FALSE, warnings = FALSE}
-physeq %>%
-  tax_table() %>%
-  head()
+objects$pathway_ps$physeq  %>%
+  humann2_species_contribution(meta_data_var = c("Subject", "sample_Sample" ,"Type", "Oral_Site", "Health_status")) %>%
+  separate(Feature, into = c("code", "name"), sep = ": ", remove = FALSE) %>%
+  dplyr::filter(!is.na(name))  -> tmp
+
+tmp %>%
+  distinct(name, .keep_all = TRUE) %>%
+  DT::datatable()
+```
+
+Distribution
+
+```{r message=FALSE, warnings = FALSE}
+tmp %>%
+  dplyr::select(-id) %>%
+  # dplyr::filter(is.numeric(DNA) & is.numeric(RNA) & is.numeric(RNA_DNA) &  RNA_DNA != Inf) %>%
+  # dplyr::filter(DNA > 0, DNA > 0, abs(RNA_DNA) > 0) %>%
+  pivot_longer(cols = c("DNA", "RNA", "RNA_DNA"),
+               values_to = "value",
+               names_to = 'Type') %>%
+  ggplot(aes(y=value, x=Type, color = Type, fill = Type)) +
+  geom_boxplot(outlier.colour = NA, alpha = 0.2,
+               position = position_dodge(width=0.7)) +
+  # geom_jitter(size=1, alpha=0.2) +
+  # ggbeeswarm::geom_beeswarm(size=1, alpha=0.2) +
+  scale_y_log10() + ylab("log10(prop)")
+
 ```
 
 ```{r message=FALSE, warnings = FALSE}
-physeq %>%
-  tax_table() %>%
-  tail()
-```
-
-create a reads counts phyloseq object (for alpha diversity - because it only takes integers...)
-```{r message=FALSE, warnings = FALSE}
-# https://bioconductor.org/packages/release/data/experiment/vignettes/curatedMetagenomicData/inst/doc/curatedMetagenomicData.html
-
-sweep(physeq %>%
-        otu_table() %>% 
-        magrittr::divide_by(sample_sums(physeq)), 2, 
-      sample_data(physeq)$ReadNorm , "*") %>%
-  round() %>%
-  as.data.frame() %>%
-  # replace_na(list(0))
-  select_if(~ !any(is.na(.))) -> counts
-
-counts %>%
-  as_tibble()
-```
-
-```{r message=FALSE, warnings = FALSE}
-plot(counts %>%
-       colSums(),
-     sample_data(physeq)$ReadNorm)
-```
-
-```{r message=FALSE, warnings = FALSE}
-merge_phyloseq(
-  otu_table(counts, taxa_are_rows = TRUE),
-  sample_data(physeq),
-  tax_table(physeq)
-)  -> phylo_count
-```
-
-```{r message=FALSE, warnings = FALSE}
-phylo_count %>%
-  taxa_sums() %>%
-  sort(decreasing = TRUE) %>%
-  head()
-
-phylo_count %>%
-  sample_sums() %>%
-  sort(decreasing = TRUE)  %>%
-  plot()
-
-phylo_count %>%
-  transform_sample_counts(function(x) x / sum(x) * 1000000) %>%
-  sample_sums() %>%
-  sort(decreasing = TRUE) %>%
-  plot()
-
-
-phylo_count %>%
-  rarefy_even_depth()
-```
-
-
-```{r message=FALSE, warnings = FALSE}
-physeq %>%
-  taxa_sums() %>%
-  sort(decreasing = TRUE) %>%
-  head()
-
-physeq %>%
-  sample_sums() %>%
-  sort(decreasing = TRUE)  %>%
-  plot()
-
-physeq %>%
-  transform_sample_counts(function(x) x / sum(x) * 1000000) %>%
-  sample_sums() %>%
-  sort(decreasing = TRUE) %>%
-  plot()
+# objects$pathway_ps$physeq %>%
+#   phyloseq_get_humann_strat_un_output(output = "stratified", # stratified / unstratified
+#                                       remove_unmapped_unintegrated = FALSE, 
+#                                       transform = "compositional",
+#                                       export_long_df = TRUE) -> out$df
+# 
+# 
+# out$df
 
 ```
 
-
-```{r message=FALSE, warnings = FALSE}
-table="pathway"
-prefix="pathway"
-
-out <- list("phylo_count" = phylo_count, "physeq" = physeq)
-
-assign(paste0(table, "_", prefix,"_physeqs"),
-       out)
-
-saveRDS(paste0(table, "_", prefix,"_physeqs") %>% get(),
-        paste0("physeq_", table, "_", prefix,".RDS"))
-
-save(list = c("phylo_count", "physeq"),
-     file = paste0("physeq_", table, "_", prefix,".RData"))
-
-# readRDS("physeq_pathway_pathway.RDS")
-# load("physeq_pathway_pathway.RData")
+```{r fig.height = 6 , fig.width = 16 , message=FALSE}
+tmp %>%
+  group_by(Species, Subject) %>%   
+  top_n(5, wt = RNA_DNA) %>%
+  ungroup() %>%
+  # filter(RNA_DNA > mean(RNA_DNA, na.rm = TRUE)) %>%
+  # dplyr::filter(grepl("ose",name)) %>%
+  humann2_RNA_DNA_ratio_plot(x_plot = "name", 
+                       y_plot = "log2(RNA)", 
+                       color = "Oral_Site", 
+                       fill = "Oral_Site",
+                       shape = NULL,
+                       filter_species = most_abundant,
+                       facet_formula = " . ~ Health_status") -> plot
 ```
 
-# From: <https://github.com/karkman/MetagenomeCourse2019/tree/master/R_for_Humann2>
+```{r fig.height = 60 , fig.width = 10 , message=FALSE, warning= FALSE}
+# plot$legend
 
-```{r message=FALSE, warnings = FALSE}
-
-DNA_path %>%
-  read_tsv() -> humann2_pathways
-
-```
-
-## Re-format the data frame from wide to long format
-```{r message=FALSE, warnings = FALSE}
-humann2_pathways %>% 
-  # head(1000) %>%
-  #Rename  `# Pathway` as pathway
-  rename(pathway = `# Pathway`) %>%
-  rename_at(vars(ends_with("_R1R2_cat_fastq_Abundance-RELAB")),
-            funs(str_replace(., "_R1R2_cat_fastq_Abundance-RELAB", "_DNA"))) %>%
-  #Gather cmp by pathway and sampleID
-  # gather(sampleID, cpm, -pathway) %>% 
-  # pivot_longer(cols = c("DNA", "RNA"),
-  #             values_to = "Abundance",
-  #             names_to = 'Type') %>%
-  pivot_longer(cols = `4012_SALIVA_DNA`:`MP9_SUB_DNA`,
-               values_to = "cpm",
-               names_to = "SampleID") %>% 
-  #Separate by sampleID and drop any extra values without warning
-  # separate(sampleID, "sampleID", sep = "_", extra = "drop") %>% 
-  #Separate pathways from organisms using |
-  separate(pathway, c("pathway", "organism"), sep = "\\|", fill = "right") %>%
-  separate(organism, c("Genus", "Species"), sep = "\\.", fill = "right", remove = FALSE) %>%
-  mutate(organism = str_replace(organism, ".s__", "_")) %>% 
-  mutate(organism = str_replace(organism, "g__|", "")) %>% 
-  mutate(Genus = str_replace(Genus, "g__", "")) %>% 
-  mutate(Genus = str_replace(Species, "s__", "")) -> humann2_pathways_long
-
-```
-
-## Continue processing the humann2 output:
-
-```{r message=FALSE, warnings = FALSE}
-# generate pathway table with no organism stratifications
-humann2_pathways_long %>%
-  filter(is.na(organism)) %>%
-  select(-organism) %>%
-  filter(!(grepl("^UN", pathway))) -> humann2_pathways_no_stratifications_long
-
-humann2_pathways_no_stratifications_long
+plot  + 
+  scale_fill_viridis_d() + 
+  scale_color_viridis_d()
 ```
 
 ```{r message=FALSE, warnings = FALSE}
-humann2_pathways_no_stratifications_long %>% group_by(SampleID) %>% summarise(Total = sum(cpm)) %>% arrange(-Total)
+tmp %>%
+  humann2_RNA_DNA_plot(x_plot = "log2(DNA)", 
+                       y_plot = "log2(RNA)", 
+                       color = "Feature", 
+                       fill = "Feature",
+                       shape = "Genus",
+                       group = "Feature",
+                       filter_species = most_abundant,
+                       facet_formula = "Oral_Site ~ Health_status + Subject") -> plot
+```
+
+```{r fig.height = 6 , fig.width = 16 , message=FALSE}
+# plot$legend
+
+plot$plot  + 
+  scale_fill_viridis_d() + 
+  scale_color_viridis_d()
+```
+
+
+```{r fig.height = 30, fig.width = 30 , message=FALSE}
+# plot$legend
+
+plot$plot  + 
+  scale_fill_viridis_d() + 
+  scale_color_viridis_d() + 
+  facet_null() + facet_grid(as.formula("Oral_Site + Species ~ Health_status + Subject"), 
+                   scale="fixed",space="free_x")
+```
+
+```{r fig.height = 30, fig.width = 30 , message=FALSE}
+# plot$legend
+
+plot$plot  + 
+  scale_fill_viridis_d() + 
+  scale_color_viridis_d() + 
+  facet_null() + facet_grid(as.formula("Oral_Site + Species ~ Health_status + Subject"), 
+                   scale="fixed",space="free_x")
+```
+
+```{r fig.height = 6 , fig.width = 16 , message=FALSE}
+# plot$legend
+
+plot$plot  + 
+  scale_fill_viridis_d() + 
+  scale_color_viridis_d() + 
+  facet_null() + 
+  facet_grid(as.formula("Oral_Site ~ Health_status + Species"), drop=TRUE,
+                   scale="fixed",space="free_x") 
+```
+
+
+```{r fig.height = 6 , fig.width = 16 , message=FALSE}
+tmp %>%
+  dplyr::filter(grepl("fermentation",name)) %>%
+  humann2_RNA_DNA_plot(x_plot = "log2(DNA)", 
+                       y_plot = "log2(RNA)", 
+                       color = "Health_status", 
+                       fill = "Health_status",
+                       shape = "Oral_Site",
+                       group = "Subject",
+                       filter_species = most_abundant,
+                       facet_formula = " Species ~ name") -> plot
+```
+
+```{r fig.height = 6 , fig.width = 6 , message=FALSE}
+# plot$legend
+
+plot$plot  + 
+  scale_fill_viridis_d() + 
+  scale_color_viridis_d()
+```
+
+```{r fig.height = 6 , fig.width = 16 , message=FALSE}
+tmp %>%
+  dplyr::filter(grepl("ose",name)) %>%
+  humann2_RNA_DNA_plot(x_plot = "log2(DNA)", 
+                       y_plot = "log2(RNA)", 
+                       color = "Health_status", 
+                       fill = "Health_status",
+                       shape = "Oral_Site",
+                       group = "Subject",
+                       filter_species = most_abundant,
+                       facet_formula = " Species ~ name") -> plot
+```
+
+```{r fig.height = 6 , fig.width = 6 , message=FALSE}
+# plot$legend
+
+plot$plot  + 
+  scale_fill_viridis_d() + 
+  scale_color_viridis_d()
+```
+
+```{r fig.height = 6 , fig.width = 16 , message=FALSE}
+tmp %>%
+  dplyr::filter(grepl("ose",name)) %>%
+  humann2_RNA_DNA_ratio_plot(x_plot = "Health_status", 
+                       y_plot = "log2(RNA_DNA)", 
+                       color = "Oral_Site", 
+                       fill = "Oral_Site",
+                       shape = NULL,
+                       filter_species = most_abundant,
+                       facet_formula = " Species ~ name") -> plot
+```
+
+```{r fig.height = 20 , fig.width = 20 , message=FALSE}
+# plot$legend
+
+plot  + 
+  scale_fill_viridis_d() + 
+  scale_color_viridis_d()
+```
+
+```{r message=FALSE, warnings = FALSE}
+tmp %>%
+  dplyr::filter(RNA > DNA) %>%
+  humann2_RNA_DNA_plot(x_plot = "log2(DNA)", 
+                       y_plot = "log2(RNA)", 
+                       color = "Species", 
+                       fill = "Species",
+                       shape = "Genus",
+                       group = "Subject",
+                       filter_species = most_abundant,
+                       facet_formula = "Oral_Site  ~ Health_status + Subject") -> plot
+```
+
+```{r fig.height = 6 , fig.width = 16 , message=FALSE}
+plot$legend
+
+plot$plot +
+  scale_fill_viridis_d() + 
+  scale_color_viridis_d()
+```
+
+```{r fig.height = 30 , fig.width = 12 , message=FALSE}
+
+as.list(setNames(most_abundant, most_abundant)) -> list
+
+lapply(
+  list,
+  FUN = humann2_RNA_DNA_ratio_plot_lapply,
+  df = tmp,
+  x_plot = "Feature",
+  y_plot = "log2(RNA_DNA)",
+  color = "Health_status",
+  fill = "Health_status",
+  filter_feature = FALSE,
+  export_legend = FALSE,
+  facet_formula = ". ~ Oral_Site ") -> out
+```
+
+```{r fig.height = 12 , fig.width = 8 , message=FALSE}
+for (tax in c(names(list)))
+{
+  out[[tax]] + scale_x_discrete(label = function(x) stringr::str_trunc(x, 50, 
+                                                                       side = "center")) -> p
+  p %>%
+    plot()
+}
+```
+
+```{r fig.height = 30 , fig.width = 12 , message=FALSE}
+
+as.list(setNames(most_abundant, most_abundant)) -> list
+
+lapply(
+  list,
+  FUN = humann2_RNA_DNA_ratio_plot_lapply,
+  df = tmp,
+  x_plot = "Feature",
+  y_plot = "log2(RNA_DNA)",
+  color = "Oral_Site",
+  fill = "Oral_Site",
+  filter_feature = FALSE,
+  export_legend = FALSE,
+  facet_formula = ". ~ Health_status ") -> out
+
+```
+
+```{r fig.height = 12 , fig.width = 8 , message=FALSE}
+for (tax in c(names(list)))
+{
+  out[[tax]] + scale_x_discrete(label = function(x) stringr::str_trunc(x, 50, side = "center")) -> p
+  p %>%
+    plot()
+}
+```
+
+# metacyc
+
+```{r message=FALSE, warnings = FALSE}
+objects$metac_ps$physeq  %>%
+  humann2_species_contribution(meta_data_var = c("Subject", "sample_Sample" ,"Type", "Oral_Site", "Health_status")) %>%
+  separate(Feature, into = c("code", "name"), sep = ": ", remove = FALSE) %>%
+  dplyr::filter(name != "NO_NAME")  -> tmp
+
+tmp %>%
+  distinct(name) %>%
+  DT::datatable()
+```
+
+```{r message=FALSE, warnings = FALSE}
+tmp %>%
+  dplyr::select(-id) %>%
+  dplyr::filter(is.numeric(DNA) & is.numeric(RNA) & is.numeric(RNA_DNA) &  RNA_DNA != Inf) %>%
+  # dplyr::filter(DNA > 10, abs(RNA_DNA) > 5) %>%
+  pivot_longer(cols = c("DNA", "RNA", "RNA_DNA"),
+               values_to = "value",
+               names_to = 'Type') %>%
+  ggplot(aes(y=value, x=Type, color = Type, fill = Type)) +
+  geom_boxplot(outlier.colour = NA, alpha = 0.2,
+               position = position_dodge(width=0.7)) +
+  # geom_jitter(size=1, alpha=0.2) +
+  # ggbeeswarm::geom_beeswarm(size=1, alpha=0.2) +
+  scale_y_log10() + ylab("log10(CPM)")
+
+```
+```{r fig.height = 8 , fig.width = 20 , message=FALSE}
+tmp %>%
+  humann2_RNA_DNA_plot(x_plot = "log2(DNA)", 
+                       y_plot = "log2(RNA)", 
+                       color = "Species", 
+                       fill = "Species",
+                       shape = "Genus",
+                       group = "Species",
+                       filter_species = most_abundant,
+                       facet_formula = "Oral_Site ~ Health_status + Subject ") -> plot
+
+plot
+```
+```{r fig.height = 10 , fig.width = 8 , message=FALSE}
+
+as.list(setNames(most_abundant, most_abundant)) -> list
+
+lapply(
+  list,
+  FUN = humann2_RNA_DNA_ratio_plot_lapply,
+  df = tmp,
+  x_plot = "name",
+  y_plot = "log2(RNA_DNA)",
+  color = "Health_status",
+  fill = "Health_status",
+  filter_feature = FALSE,
+  export_legend = FALSE,
+  facet_formula = ". ~ Oral_Site ") -> out
+
+# out$Actinomyces_oris + 
+#   scale_x_discrete(label = function(x) stringr::str_trunc(x, 50, 
+#                                                                        side = "center"))
+```
+
+```{r fig.height = 20 , fig.width = 8 , message=FALSE}
+for (tax in c(names(list)))
+{
+  out[[tax]] + scale_x_discrete(label = function(x) stringr::str_trunc(x, 40, 
+                                                                       side = "center")) -> p
+  p %>%
+    plot()
+}
+```
+
+# kegg
+
+```{r message=FALSE, warnings = FALSE}
+objects$kegg_ps$physeq  %>%
+  humann2_species_contribution(meta_data_var = c("Subject", "sample_Sample" ,"Type", "Oral_Site", "Health_status"))  %>%
+  separate(Feature, into = c("code", "name"), sep = ": ", remove = FALSE) %>%
+  dplyr::filter(name != "NO_NAME")  -> tmp
+
+tmp %>%
+  distinct(name, .keep_all = TRUE) %>%
+  DT::datatable()
+```
+
+
+```{r message=FALSE, warnings = FALSE}
+tmp %>%
+  dplyr::select(-id) %>%
+  dplyr::filter(is.numeric(DNA) & is.numeric(RNA) & is.numeric(RNA_DNA) &  RNA_DNA != Inf) %>%
+  # dplyr::filter(DNA > 10, abs(RNA_DNA) > 5) %>%
+  pivot_longer(cols = c("DNA", "RNA", "RNA_DNA"),
+               values_to = "value",
+               names_to = 'Type') %>%
+  ggplot(aes(y=value, x=Type, color = Type, fill = Type)) +
+  geom_boxplot(outlier.colour = NA, alpha = 0.2,
+               position = position_dodge(width=0.7)) +
+  # geom_jitter(size=1, alpha=0.2) +
+  # ggbeeswarm::geom_beeswarm(size=1, alpha=0.2) +
+  scale_y_log10() + ylab("log10(CPM)")
+
+```
+
+
+```{r message=FALSE, warnings = FALSE}
+tmp %>%
+  humann2_RNA_DNA_plot(x_plot = "log2(DNA)", 
+                       y_plot = "log2(RNA)", 
+                       color = "name", 
+                       fill = "name",
+                       shape = "Genus",
+                       group = "name",
+                       filter_species = most_abundant,
+                       facet_formula = "Oral_Site ~ Health_status ") -> plot
+```
+
+```{r fig.height = 6 , fig.width = 16 , message=FALSE}
+plot$plot  + 
+  scale_fill_viridis_d() + 
+  scale_color_viridis_d()
+```
+
+
+```{r message=FALSE, warnings = FALSE}
+tmp %>%
+  humann2_RNA_DNA_plot(x_plot = "log2(DNA)", 
+                       y_plot = "log2(RNA)", 
+                       color = "name", 
+                       fill = "name",
+                       shape = "Genus",
+                       group = "name",
+                       filter_feature = most_abundant,
+                       facet_formula = "Oral_Site ~ Health_status ") -> plot
+```
+
+
+```{r fig.height = 30 , fig.width = 12 , message=FALSE}
+
+as.list(setNames(most_abundant, most_abundant)) -> list
+
+lapply(
+  list,
+  FUN = humann2_RNA_DNA_ratio_plot_lapply,
+  df = tmp,
+  x_plot = "Feature",
+  y_plot = "log2(RNA_DNA)",
+  color = "Health_status",
+  fill = "Health_status",
+  filter_feature = FALSE,
+  export_legend = FALSE,
+  facet_formula = ". ~ Oral_Site ") -> out
+```
+
+```{r fig.height = 12 , fig.width = 8 , message=FALSE}
+for (tax in c(names(list)))
+{
+  out[[tax]] + scale_x_discrete(label = function(x) stringr::str_trunc(x, 50, 
+                                                                       side = "center")) -> p
+  p %>%
+    plot()
+}
+```
+
+
+
+# l4c_ps
+
+```{r message=FALSE, warnings = FALSE}
+objects$l4c_ps$physeq_count %>%
+  humann2_species_contribution(meta_data_var = c("Subject", "sample_Sample" ,"Type", "Oral_Site", "Health_status"))  %>%
+  separate(Feature, into = c("code", "name"), sep = ": ", remove = FALSE) %>%
+  dplyr::filter(name != "NO_NAME")  -> tmp
+
+tmp %>%
+  select(-id) %>%
+  distinct(name, .keep_all = TRUE) %>%
+  DT::datatable()
+```
+
+
+```{r message=FALSE, warnings = FALSE}
+tmp %>%
+  dplyr::select(-id) %>%
+  dplyr::filter(is.numeric(DNA) | is.numeric(RNA)) %>%
+  # dplyr::filter(DNA > 10, abs(RNA_DNA) > 5) %>%
+  pivot_longer(cols = c("DNA", "RNA", "RNA_DNA"),
+               values_to = "value",
+               names_to = 'Type') %>%
+  ggplot(aes(y=value, x=Type, color = Type, fill = Type)) +
+  geom_boxplot(outlier.colour = NA, alpha = 0.2,
+               position = position_dodge(width=0.7)) +
+  # geom_jitter(size=1, alpha=0.2) +
+  # ggbeeswarm::geom_beeswarm(size=1, alpha=0.2) +
+  scale_y_log10() + ylab("log10(CPM)")
+
+```
+
+```{r message=FALSE, warnings = FALSE}
+tmp %>%
+  select(-id) %>% 
+  DT::datatable()
 ```
 
 ```{r message=FALSE, warnings = FALSE}
 
-# Compute pathway alpha divertities per sample
-humann2_pathways_no_stratifications_long %>%
-  group_by(SampleID) %>%
-  summarise(shannons_div = vegan::diversity(cpm),
-            invsimpson_div = vegan::diversity(cpm, index = "invsimpson"),
-            richness = sum(cpm>0)) %>%
-  arrange(richness)
+humann2_RNA_DNA_plot(x_plot = "log2(DNA)", 
+                       y_plot = "log2(RNA)", 
+                       color = "name", 
+                       fill = "name",
+                       shape = "Genus",
+                       group = "name",
+                       filter_species = most_abundant,
+                       facet_formula = "Oral_Site ~ Health_status ") -> plot
 ```
 
-```{r message=FALSE, warnings = FALSE}
-# Work with organism level stratifications
-humann2_pathways_long %>%
-  filter(!(is.na(organism))) %>%
-  filter(!(grepl("^UN", pathway))) -> humann2_pathway_stratifications_long
-
-humann2_pathway_stratifications_long %>% group_by(SampleID) %>% summarise(Total = sum(cpm)) %>% arrange(-Total)
+```{r fig.height = 6 , fig.width = 16 , message=FALSE}
+plot$plot  + 
+  scale_fill_viridis_d() + 
+  scale_color_viridis_d()
 ```
 
-```{r message=FALSE, warnings = FALSE}
-# number of organisms per pathway
-humann2_pathway_stratifications_long %>%
-  group_by(pathway, SampleID) %>%
-  summarise(num_organisms = length(unique(organism))) -> humann2_organisms_per_pathway 
+```{r fig.height = 30 , fig.width = 12 , message=FALSE}
 
-# average contributional alpha diverity (Gini simpson diversity) per pathway
-humann2_pathway_stratifications_long %>%
-  filter(cpm > 0) %>%
-  group_by(pathway, SampleID) %>%
-  summarise(shannons_div = vegan::diversity(cpm),
-            invsimpson_div = vegan::diversity(cpm, index = "invsimpson"),
-            richness = sum(cpm>0)) %>%
-  group_by(pathway) %>%
-  summarise(mean_alpha_div = mean(shannons_div),
-            median_alpha_dv = median(shannons_div)) %>%
-  arrange(-mean_alpha_div) -> humann2_pathway_alpha_div
-head(humann2_pathway_alpha_div)
+as.list(setNames(most_abundant, most_abundant)) -> list
+
+lapply(
+  list,
+  FUN = humann2_RNA_DNA_ratio_plot_lapply,
+  df = tmp,
+  x_plot = "Feature",
+  y_plot = "log2(RNA_DNA)",
+  color = "Health_status",
+  fill = "Health_status",
+  filter_feature = FALSE,
+  export_legend = FALSE,
+  facet_formula = ". ~ Oral_Site ") -> out
 ```
 
-```{r message=FALSE, warnings = FALSE}
-# add number of samples where pathway present
-humann2_pathways_no_stratifications_long %>%
-  filter(cpm > 0) %>%
-  group_by(pathway) %>%
-  summarise(n_samples = n()) %>%
-  left_join(humann2_pathway_alpha_div) %>%
-  left_join(humann2_organisms_per_pathway) -> humann2_pathway_alpha_div_with_n_samples
-
-humann2_pathway_alpha_div_with_n_samples
-```
-```{r message=FALSE, warnings = FALSE}
-humann2_pathway_alpha_div_with_n_samples %>%
-  filter(n_samples > 10) %>%
-  arrange(-mean_alpha_div) %>%
-  print(n = 20)
-```
-
-```{r message=FALSE, warnings = FALSE}
-sessionInfo()
+```{r fig.height = 12 , fig.width = 8 , message=FALSE}
+for (tax in c(names(list)))
+{
+  out[[tax]] + scale_x_discrete(label = function(x) stringr::str_trunc(x, 50, 
+                                                                       side = "center")) -> p
+  p %>%
+    plot()
+}
 ```
