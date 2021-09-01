@@ -1,0 +1,1639 @@
+---
+title: "Oral Microbiome - Most abundant across site `r Sys.Date()`"
+author: "Florentin CONSTANCIAS"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 4
+---
+
+<style type="text/css">
+div.main-container {
+max-width: 1800px;
+margin-left: auto;
+margin-right: auto;
+}
+.Table-Normal {
+position: relative;
+//display: block;
+margin: 10px auto;
+padding: 0;
+width: 100%;
+height: auto;
+border-collapse: collapse;
+text-align: center;
+}
+</style>
+
+
+```{r setup, include=FALSE}
+rm(list = ls())
+
+# knitr::opts_knit$set(root.dir = "/Users/fconstan/Projects/Oral/") 
+knitr::opts_chunk$set(echo = TRUE)
+DT::datatable(matrix())
+# knitr::opts_chunk$set(dev = 'pdf')
+# knitr::purl("Mdown.Rmd")
+
+```
+
+
+```{r packages, results=TRUE, warning=TRUE, include=FALSE}
+require(tidyverse); packageVersion("tidyverse")
+require(phyloseq); packageVersion("phyloseq")
+```
+
+# Fin most abundant taxa across sites:
+
+```{r, message = FALSE, warning = FALSE, include=FALSE}
+biobakery_function <- ("~/Documents/GitHub/DivComAnalyses/R/phyloseq_biobakery_functions.R")
+alpha <- ("~/Documents/GitHub/DivComAnalyses/R/phyloseq_alpha.R")
+beta <- ("~/Documents/GitHub/DivComAnalyses/R/phyloseq_beta.R")
+taxa <- ("~/Documents/GitHub/DivComAnalyses/R/phyloseq_taxa_tests.R")
+norm <- ("~/Documents/GitHub/DivComAnalyses/R/phyloseq_normalisation.R")
+heat <- ("~/Documents/GitHub/DivComAnalyses/R/phyloseq_heatmap.R")
+varia <- ("~/Documents/GitHub/DivComAnalyses/R/phyloseq_varia.R")
+
+```
+
+```{r, message = FALSE, results= "hide", warning = FALSE, include = TRUE}
+sapply(c(biobakery_function, alpha, beta, taxa, norm, heat, varia), source, chdir = TRUE)
+```
+
+
+# Data loading:
+
+```{r, message = FALSE, results=FALSE}
+input <- list(metpahlan_ps = "~/Documents/GitHub/oral-microbiome/data/processed/metaphlan_ps.RDS",
+              motus_ps = "~/Documents/GitHub/oral-microbiome/data/processed/motus/physeq.RDS",
+              pathway_ps = "~/Documents/GitHub/oral-microbiome/data/processed/humann_pw_ps.RDS",
+              kegg_ps = "~/Documents/GitHub/oral-microbiome/data/processed/humann_kegg_ps.RDS",
+              l4c_ps = "~/Documents/GitHub/oral-microbiome/data/processed/humann_l4c_ps.RDS",
+              go_ps = "~/Documents/GitHub/oral-microbiome/data/processed/humann_go_ps.RDS",
+              infogo_ps = "~/Documents/GitHub/oral-microbiome/data/processed/humann_infogo_ps.RDS",
+              metac_ps = "~/Documents/GitHub/oral-microbiome/data/processed/humann_metac_ps.RDS",
+              pfam_ps = "~/Documents/GitHub/oral-microbiome/data/processed/humann_pfam_ps.RDS")
+
+figures = "~/Documents/GitHub/oral-microbiome/figures"
+dir.create(figures)
+```
+
+
+```{r, warning =FALSE, message = FALSE}
+purrr::map(input, 
+           readRDS) -> objects
+```
+
+
+```{r, message = FALSE, warning = FALSE}
+sample_data(objects$metpahlan_ps$physeq)$Site_Health <- paste0(sample_data(objects$metpahlan_ps$physeq)$Oral_Site,
+                                                               "_",
+                                                               sample_data(objects$metpahlan_ps$physeq)$Health_status)
+```
+
+## Fig1 Identification of predominant streptococcus species at all sites
+
+This figure is good, but with the approach we decided focusing solely on streptococcus species
+We should change it a bit so that it shows top 10 streptococcus species across all three sites
+
+
+
+## Identification of predominant streptococcus species at all sites
+### Fig1A: predominant streptococcus species across all samples in health
+
+```{r message=FALSE, warnings = FALSE}
+objects$metpahlan_ps$physeq %>%
+  subset_samples(Health_status == "Healthy control") -> tmp
+# subset_samples(Oral_Site %in% c("SALIVA", "TONGUE_BIOFILM")) -> tmp
+
+tmp %>%
+  subset_taxa(Genus %in% c("Streptococcus")) %>%
+  physeq_most_abundant(physeq = .,
+                       group_var = "Oral_Site",
+                       ntax = 10,
+                       tax_level = "Species") -> ma_saliva_tongue_strep
+
+
+```
+
+```{r fig.height = 5 , fig.width = 12 , message=FALSE}
+tmp %>%
+  transform_sample_counts(function(x) x/sum(x) * 100) %>%
+  phyloseq::subset_taxa(Species %in% ma_saliva_tongue_strep) %>%
+  phyloseq_ampvis_heatmap(transform = FALSE,
+                          group_by = "Subject",#treatment
+                          facet_by = c("Oral_Site", "Health_status", "Subject"),
+                          ntax = 100,
+                          tax_aggregate = "Species",
+                          tax_add = NULL) -> p
+
+p + facet_grid(. ~ Oral_Site + Health_status, scales = "free", space = "free") + 
+  scale_fill_viridis_c(breaks = c(0,  0.01, 1, 10, 25, 50, 75, 100), 
+                       labels = c(0,  0.01, 1, 10, 25,50, 75, 100), 
+                       trans = scales::pseudo_log_trans(sigma = 0.1))  + 
+  theme_classic() + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 6)) + 
+  theme(axis.text.y = element_text(angle = 0,  size = 8))-> Fig1
+
+Fig1
+
+Fig1 %>% 
+  export::graph2ppt(append = TRUE, file = file.path(figures, "figures.pptx"))
+
+
+Fig1 %>%
+  ggsave(path = figures,
+         plot = .,
+         filename = "Fig1.png",
+         units = "cm", width = 20, height = 10)
+
+
+```
+
+```{r message=FALSE, warnings = FALSE}
+objects$metpahlan_ps$physeq %>%
+  subset_samples(Health_status == "Healthy control") %>% 
+  subset_samples(Oral_Site %in% c("SALIVA", "TONGUE_BIOFILM")) -> tmp
+
+tmp %>%
+  subset_taxa(Genus %in% c("Streptococcus")) %>%
+  physeq_most_abundant(physeq = .,
+                       group_var = "Oral_Site",
+                       ntax = 10,
+                       tax_level = "Species") -> ma_saliva_tongue_strep
+
+
+```
+
+
+```{r message=FALSE, warnings = FALSE}
+ma_saliva_tongue_strep
+```
+
+```{r message=FALSE, warnings = FALSE}
+ma_saliva_tongue_strep_sel <- c("Streptococcus_parasanguinis",
+                                "Streptococcus_salivarius",
+                                "Streptococcus_infantis")
+```
+
+
+
+```{r message=FALSE, warnings = FALSE}
+objects$metpahlan_ps$physeq %>%
+  subset_samples(Health_status == "Healthy control") %>% 
+  subset_samples(Oral_Site %in% c("SALIVA", "SUBGINGIVAL_PLAQUE")) -> tmp
+
+tmp %>%
+  subset_taxa(Genus %in% c("Streptococcus")) %>%
+  physeq_most_abundant(physeq = .,
+                       group_var = "Oral_Site",
+                       ntax = 10,
+                       tax_level = "Species") -> ma_saliva_plaque_strep
+
+```
+
+
+```{r message=FALSE, warnings = FALSE}
+ma_saliva_plaque_strep
+```
+
+```{r message=FALSE, warnings = FALSE}
+ma_saliva_plaque_strep_sel <- c("Streptococcus_oralis",
+                                "Streptococcus_sanguinis",
+                                "Streptococcus_gordonii")
+```
+
+## Fig2 Overall bacterial activity of selected species
+
+### Load pathway abundance table and have a look:
+
+```{r message=FALSE, warnings = FALSE}
+objects$pathway_ps$physeq  %>%
+  humann2_species_contribution(meta_data_var = c("Subject", "sample_Sample" ,"Type", "Oral_Site", "Health_status")) %>%
+  separate(Feature, into = c("code", "name"), sep = ": ", remove = FALSE) %>%
+  dplyr::filter(!is.na(name))  -> pwy
+
+pwy %>%
+  distinct(name, .keep_all = TRUE) %>%
+  DT::datatable()
+```
+
+### Fig2A: box plot species saliva vs. tongue
+
+
+```{r fig.height = 6 , fig.width = 16 , message=FALSE}
+ma_saliva_tongue_strep_sel
+```
+
+
+```{r, message=FALSE}
+humann2_RNA_DNA_ratio_plot <- function(df,
+                                       rm_un_sp = TRUE,
+                                       x_plot,
+                                       y_plot,
+                                       color,
+                                       fill,
+                                       shape = NULL,
+                                       filter_feature = FALSE,
+                                       filter_genus = FALSE,
+                                       filter_species = FALSE,
+                                       only_pos = TRUE, # dplyr::filter(DNA  > 0 , RNA > 0)
+                                       facet_formula = FALSE,#". ~ Health_status"
+                                       export_legend = FALSE,
+                                       box_width = 0.8){ #  
+  
+  require(tidyverse); require(ggConvexHull)
+  
+  if(rm_un_sp == TRUE){
+    df %>%
+      dplyr::filter(Species != "unclassified") -> df
+  }
+  
+  if(filter_feature != FALSE){
+    df %>%
+      dplyr::filter(Feature %in% filter_feature) -> df
+  }
+  
+  if(filter_genus != FALSE){
+    df %>%
+      dplyr::filter(Genus %in% filter_genus) -> df
+  }
+  if(filter_species != FALSE){
+    df %>%
+      dplyr::filter(Species %in% filter_species) -> df
+  }
+  
+  if(only_pos == TRUE){
+    df %>%
+      dplyr::filter(DNA  > 0 , RNA > 0) -> df
+  }
+  
+  df %>%
+    ggplot(aes_string(x = x_plot, y = y_plot, color = color, fill = fill, shape = shape)) + 
+    #geom_boxplot(outlier.colour = NA, alpha = 0.2,
+                 # position = position_dodge(width=box_width)) +
+    # geom_jitter(size=1, alpha=0.2) +
+    # ggbeeswarm::geom_beeswarm(size=1, alpha=0.2) +
+    # geom_violin(size=0.05, alpha=0.2,
+    #             position = position_dodge(width=box_width)) +
+    geom_hline(yintercept = 0,
+               col = "red",
+               linetype = "dotted",
+               size = 0.5) +
+    theme_light() +
+    guides(fill=guide_legend(ncol=1)) +
+    theme(axis.title.x = element_blank()) +
+    # ylab(paste0("Relative Abundance (Top ",n," (RNA)) \n")) + #scale_y_continuous(trans='sqrt') + 
+    # theme(legend.text = element_text(size= 6)) + 
+    # theme(axis.text.x = element_text(size = 4)) +
+    theme(legend.key.size = unit(0.2,"cm")) -> p
+  
+  if(facet_formula != FALSE){
+    p + facet_grid(as.formula(facet_formula), drop=TRUE,
+                   scale="fixed",space="free_x") + xlab(label = NULL) -> p
+  }
+  
+  if(export_legend == TRUE){
+    
+    out <- list("legend" = p %>% ggpubr::get_legend() %>% ggpubr::as_ggplot(),
+                "plot" = p  + ggpubr::rotate_x_text(90) + 
+                  ggpubr::rotate() + theme(legend.position = "none"))
+    
+  }else{
+    out <- p  + ggpubr::rotate_x_text(90) + 
+      ggpubr::rotate() + theme(legend.position = "none")
+  }
+  return(out)
+}
+```
+
+```{r fig.height = 2 , fig.width = 2 , message=FALSE}
+pwy %>%
+  dplyr::filter(Health_status == "Healthy control",
+                Oral_Site %in% c("SALIVA", "TONGUE_BIOFILM")) %>%
+  # filter(RNA_DNA > mean(RNA_DNA, na.rm = TRUE)) %>%
+  # dplyr::filter(grepl("ose",name)) %>%
+  humann2_RNA_DNA_ratio_plot(x_plot = "Species", 
+                             y_plot = "log2(RNA_DNA)", 
+                             color = "Oral_Site", 
+                             fill = "Oral_Site",
+                             shape = NULL,
+                             filter_species = ma_saliva_tongue_strep_sel,
+                             facet_formula = ". ~ .",
+                             export_legend = TRUE) -> plot
+
+# plot$legend
+# 
+# plot$plot
+```
+
+```{r fig.height = 10 , fig.width = 10 , message=FALSE}
+ggpubr::get_palette("npg", 3)
+```
+
+```{r, message=FALSE}
+plot$plot + geom_point(size  = 0.6, alpha = 0.4, position = position_jitterdodge(dodge.width = 0.8)) + ggpubr::rotate() -> tmp
+
+# plot$plot + geom_violin(fill = "transparent") + ggforce::geom_sina(size  = 0.6, alpha = 0.4, position = position_jitterdodge(dodge.width = 0.8)) + ggpubr::rotate() -> tmp
+
+plot$plot + geom_violin(size=0.05, alpha=0.2) + ggforce::geom_sina(size  = 0.6, alpha = 0.4) + ggpubr::rotate() -> tmp
+
+ggpubr::set_palette(tmp, palette = c("#E64B35FF", "#4DBBD5FF"))  + theme(legend.position = "top") -> fig2a
+
+fig2a 
+
+fig2a %>% 
+  export::graph2ppt(append = TRUE, file = file.path(figures, "figures.pptx"))
+
+fig2a %>%
+  ggsave(path = figures,
+         plot = .,
+         filename = "fig2a.png",
+         units = "cm", width = 20, height = 10)
+```
+```{r fig.height = 2 , fig.width = 2 , message=FALSE}
+pwy %>%
+  dplyr::filter(Health_status == "Healthy control",
+                Oral_Site %in% c("SALIVA", "TONGUE_BIOFILM")) %>%
+  # filter(RNA_DNA > mean(RNA_DNA, na.rm = TRUE)) %>%
+  # dplyr::filter(grepl("ose",name)) %>%
+  humann2_RNA_DNA_ratio_plot(x_plot = "Subject", 
+                             y_plot = "log2(RNA_DNA)", 
+                             color = "Oral_Site", 
+                             fill = "Oral_Site",
+                             shape = NULL,
+                             filter_species = ma_saliva_tongue_strep_sel,
+                             facet_formula = "Oral_Site ~ Species",
+                             export_legend = TRUE) -> plot
+
+# plot$legend
+# 
+# plot$plot
+```
+
+```{r fig.height = 10 , fig.width = 10 , message=FALSE}
+ggpubr::get_palette("npg", 3)
+```
+
+```{r, message=FALSE}
+plot$plot + geom_point(size  = 0.6, alpha = 0.4, position = position_jitterdodge(dodge.width = 0.8)) + ggpubr::rotate() -> tmp
+
+# plot$plot + geom_violin(fill = "transparent") + ggforce::geom_sina(size  = 0.6, alpha = 0.4, position = position_jitterdodge(dodge.width = 0.8)) + ggpubr::rotate() -> tmp
+
+plot$plot + geom_violin(size=0.05, alpha=0.2) + ggforce::geom_sina(size  = 0.6, alpha = 0.4) + ggpubr::rotate() -> tmp
+
+ggpubr::set_palette(tmp, palette = c("#E64B35FF", "#4DBBD5FF"))  + theme(legend.position = "top") -> fig2a
+
+fig2a
+
+fig2a %>% 
+  export::graph2ppt(append = TRUE, file = file.path(figures, "figures.pptx"))
+
+# fig2a %>%
+#   ggsave(path = figures,
+#          plot = .,
+#          filename = "fig2a.png",
+#          units = "cm", width = 20, height = 10)
+# 
+# pwy %>%
+#     dplyr::filter(Health_status == "Healthy control",
+#                   Oral_Site %in% c("SALIVA", "TONGUE_BIOFILM"))  %>%  filter(Species %in% ma_saliva_tongue_strep_sel) %>%  filter(Species == "Streptococcus_infantis")  %>%  group_by(Species, Subject, Oral_Site) %>%  summarise()
+```
+
+```{r , message=FALSE}
+plot$plot$data %>% 
+  ggpubr::compare_means(RNA_DNA ~ Oral_Site,
+                        group.by = c("Species"),
+                        data = .,
+                        method = "wilcox.test",
+                        p.adjust.method = "fdr",
+                        alternative = "two.sided") %>%
+  filter(p.adj < 0.05)  %>%
+  DT::datatable()
+```
+
+### Fig2C: box plot species saliva vs. plaque
+
+
+```{r fig.height = 2 , fig.width = 2 , message=FALSE}
+pwy %>%
+  dplyr::filter(Health_status == "Healthy control",
+                Oral_Site %in% c("SALIVA", "SUBGINGIVAL_PLAQUE")) %>%
+  # filter(RNA_DNA > mean(RNA_DNA, na.rm = TRUE)) %>%
+  # dplyr::filter(grepl("ose",name)) %>%
+  humann2_RNA_DNA_ratio_plot(x_plot = "Species", 
+                             y_plot = "log2(RNA_DNA)", 
+                             color = "Oral_Site", 
+                             fill = "Oral_Site",
+                             shape = NULL,
+                             filter_species = ma_saliva_plaque_strep_sel,
+                             facet_formula = ". ~ .",
+                             export_legend = TRUE) -> plot
+
+plot$legend
+
+plot$plot
+```
+
+```{r fig.height = 10 , fig.width = 10 , message=FALSE}
+ggpubr::get_palette("npg", 3)
+```
+
+```{r, message=FALSE}
+plot$plot + geom_point(size  = 0.6, alpha = 0.4, position = position_jitterdodge(dodge.width = 0.8)) + ggpubr::rotate() -> tmp
+
+plot$plot + geom_violin(size=0.05, alpha=0.2) + ggforce::geom_sina(size  = 0.6, alpha = 0.4) + ggpubr::rotate() -> tmp
+
+ggpubr::set_palette(tmp, palette = c("#E64B35FF", "#00A087FF"))  + theme(legend.position = "top") -> fig2b
+
+fig2b
+
+fig2b %>% 
+  export::graph2ppt(append = TRUE, file = file.path(figures, "figures.pptx"))
+
+
+fig2b %>%
+  ggsave(path = figures,
+         plot = .,
+         filename = "fig2b.png",
+         units = "cm", width = 20, height = 10)
+```
+
+```{r , message=FALSE}
+plot$plot$data %>% 
+  ggpubr::compare_means(RNA_DNA ~ Oral_Site,
+                        group.by = c("Species"),
+                        data = .,
+                        method = "wilcox.test",
+                        p.adjust.method = "fdr",                         alternative = "two.sided") %>%
+  filter(p.adj < 0.05)  %>%
+  DT::datatable()
+```
+
+Fig 3. Pathway activity of selected species
+
+Fig3A: significant pathway expression by candidate species saliva versus tongue in health
+
+redo main plot + stats
+```{r fig.height = 2 , fig.width = 2 , message=FALSE}
+pwy %>%
+  dplyr::filter(Health_status == "Healthy control",
+                Oral_Site %in% c("SALIVA", "TONGUE_BIOFILM")) %>%
+  humann2_RNA_DNA_ratio_plot(x_plot = "name", 
+                             y_plot = "log2(RNA_DNA)", 
+                             color = "Oral_Site", 
+                             fill = "Oral_Site",
+                             shape = NULL,
+                             filter_species = ma_saliva_tongue_strep_sel,
+                             facet_formula = " . ~ Health_status + Species",
+                             export_legend = TRUE) -> plot
+
+plot$legend
+```
+
+```{r fig.height = 14 , fig.width = 10 , message=FALSE}
+# plot$plot
+```
+
+```{r , message=FALSE}
+plot$plot$data %>% 
+  # mutate(log2RNA_DNA = log2(RNA_DNA)) %>%
+  ggpubr::compare_means(RNA_DNA ~  Oral_Site,
+                        group.by = c("Species","Feature"),
+                        data = .,
+                        # method = "wilcox.test",
+                        p.adjust.method = "fdr",                         alternative = "two.sided") %>%
+  filter(p.adj < 0.05) -> diff_signif  
+
+diff_signif %>%
+  DT::datatable()
+```
+
+```{r fig.height = 6 , fig.width = 6 , message=FALSE}
+pwy %>%
+  dplyr::filter(Health_status == "Healthy control") %>%
+  dplyr::filter(Oral_Site %in% c("SALIVA", "TONGUE_BIOFILM")) %>%
+  # dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>%
+  humann2_RNA_DNA_ratio_plot(x_plot = "name",
+                             y_plot = "log2(RNA_DNA)",
+                             color = "Oral_Site",
+                             fill = "Oral_Site",
+                             shape = NULL,
+                             filter_species = "Streptococcus_infantis",
+                             filter_feature = diff_signif %>% filter(Species == "Streptococcus_infantis") %>% pull(Feature),
+                             facet_formula = " . ~ Health_status ",
+                             export_legend = TRUE) -> plot
+
+
+plot$legend
+plot$plot
+
+```
+
+```{r , message=FALSE}
+plot$plot + geom_point(size  = 0.6, alpha = 0.4, position = position_jitterdodge(dodge.width = 0.8)) + ggpubr::rotate() -> tmp
+
+plot$plot +     geom_boxplot(size=0.05, alpha=0.2) + ggforce::geom_sina(size  = 0.6, alpha = 0.4) + ggpubr::rotate() -> tmp
+
+ggpubr::set_palette(tmp, palette = c("#E64B35FF", "#4DBBD5FF"))  + theme(legend.position = "top") -> fig3a
+
+fig3a
+
+fig3a %>% 
+  export::graph2ppt(append = TRUE, file = file.path(figures, "figures.pptx"))
+
+fig3a %>%
+  ggsave(path = figures,
+         plot = .,
+         filename = "fig3a.png",
+         units = "cm", width = 20, height = 10)
+```
+
+```{r fig.height = 6 , fig.width = 6 , message=FALSE}
+pwy %>%
+  dplyr::filter(Health_status == "Healthy control") %>%
+  dplyr::filter(Oral_Site %in% c("SALIVA", "TONGUE_BIOFILM")) %>%
+  # dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>% 
+  humann2_RNA_DNA_ratio_plot(x_plot = "name", 
+                             y_plot = "log2(RNA_DNA)", 
+                             color = "Oral_Site", 
+                             fill = "Oral_Site",
+                             shape = NULL,
+                             filter_species = "Streptococcus_parasanguinis",
+                             filter_feature = diff_signif %>% filter(Species == "Streptococcus_parasanguinis") %>% pull(Feature),
+                             facet_formula = " . ~ Health_status ",
+                             export_legend = TRUE) -> plot
+
+
+plot$legend
+plot$plot
+```
+
+```{r f, message=FALSE}
+plot$plot + geom_point(size  = 0.6, alpha = 0.4, position = position_jitterdodge(dodge.width = 0.8)) + ggpubr::rotate() -> tmp
+
+plot$plot + geom_boxplot(size=0.05, alpha=0.2) + ggforce::geom_sina(size  = 0.6, alpha = 0.4) + ggpubr::rotate() -> tmp
+
+ggpubr::set_palette(tmp, palette = c("#E64B35FF", "#4DBBD5FF")) + theme(legend.position = "top") -> fig3b
+
+fig3b
+
+fig3b %>% 
+  export::graph2ppt(append = TRUE, file = file.path(figures, "figures.pptx"))
+
+
+fig3b %>%
+  ggsave(path = figures,
+         plot = .,
+         filename = "fig3b.png",
+         units = "cm", width = 20, height = 10)
+```
+
+
+```{r fig.height = 6 , fig.width = 6 , message=FALSE}
+pwy %>%
+  dplyr::filter(Health_status == "Healthy control") %>%
+  dplyr::filter(Oral_Site %in% c("SALIVA", "TONGUE_BIOFILM")) %>%
+  # dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>% 
+  humann2_RNA_DNA_ratio_plot(x_plot = "name", 
+                             y_plot = "log2(RNA_DNA)", 
+                             color = "Oral_Site", 
+                             fill = "Oral_Site",
+                             shape = NULL,
+                             filter_species = "Streptococcus_salivarius",
+                             filter_feature = diff_signif %>% filter(Species == "Streptococcus_salivarius") %>% pull(Feature),
+                             facet_formula = " . ~ Health_status ",
+                             export_legend = TRUE) -> plot
+
+
+plot$legend
+plot$plot
+```
+```{r , message=FALSE}
+plot$plot + geom_point(size  = 0.6, alpha = 0.4, position = position_jitterdodge(dodge.width = 0.8)) + ggpubr::rotate() -> tmp
+
+plot$plot +     geom_boxplot(size=0.05, alpha=0.2) + ggforce::geom_sina(size  = 0.6, alpha = 0.4) + ggpubr::rotate() -> tmp
+
+
+ggpubr::set_palette(tmp, palette = c("#E64B35FF", "#4DBBD5FF"))  + theme(legend.position = "top")  -> fig3c
+
+fig3c
+
+fig3c %>% 
+  export::graph2ppt(append = TRUE, file = file.path(figures, "figures.pptx"))
+
+fig3c %>%
+  ggsave(path = figures,
+         plot = .,
+         filename = "fig3c.png",
+         units = "cm", width = 20, height = 10)
+```
+
+Fig3B: significant pathway expression by candidate species saliva versus plaque in health
+
+redo main plot + stats
+```{r fig.height = 2 , fig.width = 2 , message=FALSE}
+pwy %>%
+  dplyr::filter(Health_status == "Healthy control",
+                Oral_Site %in% c("SALIVA", "SUBGINGIVAL_PLAQUE")) %>%
+  humann2_RNA_DNA_ratio_plot(x_plot = "name", 
+                             y_plot = "log2(RNA_DNA)", 
+                             color = "Oral_Site", 
+                             fill = "Oral_Site",
+                             shape = NULL,
+                             filter_species = ma_saliva_plaque_strep_sel,
+                             facet_formula = " . ~ Health_status + Species",
+                             export_legend = TRUE) -> plot
+
+plot$legend
+```
+
+```{r fig.height = 14 , fig.width = 10 , message=FALSE}
+# plot$plot
+```
+
+```{r , message=FALSE}
+plot$plot$data %>% 
+  # mutate(log2RNA_DNA = log2(RNA_DNA)) %>%
+  ggpubr::compare_means(RNA_DNA ~  Oral_Site,
+                        group.by = c("Species","Feature"),
+                        data = .,
+                        # method = "wilcox.test",
+                        p.adjust.method = "fdr",                         alternative = "two.sided") %>%
+  filter(p.adj < 0.05) -> diff_signif  
+
+diff_signif %>%
+  DT::datatable()
+```
+```{r fig.height = 10 , fig.width = 10 , message=FALSE}
+pwy %>%
+  dplyr::filter(Health_status == "Healthy control") %>%
+  dplyr::filter(Oral_Site %in% c("SALIVA", "SUBGINGIVAL_PLAQUE")) %>%
+  # dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>%
+  humann2_RNA_DNA_ratio_plot(x_plot = "name",
+                             y_plot = "log2(RNA_DNA)",
+                             color = "Oral_Site",
+                             fill = "Oral_Site",
+                             shape = NULL,
+                             filter_species = "Streptococcus_oralis",
+                             filter_feature = diff_signif %>% filter(Species == "Streptococcus_oralis") %>% pull(Feature),
+                             facet_formula = " . ~ Health_status ",
+                             export_legend = TRUE) -> plot
+
+
+plot$legend
+plot$plot
+```
+```{r, message=FALSE}
+plot$plot + geom_point(size  = 0.6, alpha = 0.4, position = position_jitterdodge(dodge.width = 0.8)) + ggpubr::rotate() -> tmp
+
+plot$plot +     geom_boxplot(size=0.05, alpha=0.2) + ggforce::geom_sina(size  = 0.6, alpha = 0.4) + ggpubr::rotate() -> tmp
+
+ggpubr::set_palette(tmp, palette = c("#E64B35FF", "#00A087FF"))  + theme(legend.position = "top") -> fig4a
+
+fig4a
+
+fig4a %>% 
+  export::graph2ppt(append = TRUE, file = file.path(figures, "figures.pptx"))
+
+fig4a %>%
+  ggsave(path = figures,
+         plot = .,
+         filename = "fig4a.png",
+         units = "cm", width = 20, height = 10)
+```
+
+```{r fig.height = 10 , fig.width = 10 , message=FALSE}
+pwy %>%
+  dplyr::filter(Health_status == "Healthy control") %>%
+  dplyr::filter(Oral_Site %in% c("SALIVA", "SUBGINGIVAL_PLAQUE")) %>%
+  # dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>% 
+  humann2_RNA_DNA_ratio_plot(x_plot = "name", 
+                             y_plot = "log2(RNA_DNA)", 
+                             color = "Oral_Site", 
+                             fill = "Oral_Site",
+                             shape = NULL,
+                             filter_species = "Streptococcus_sanguinis",
+                             filter_feature = diff_signif %>% filter(Species == "Streptococcus_sanguinis") %>% pull(Feature),
+                             facet_formula = " . ~ Health_status ",
+                             export_legend = TRUE) -> plot
+
+
+plot$legend
+plot$plot
+```
+
+```{r, message=FALSE}
+plot$plot + geom_point(size  = 0.6, alpha = 0.4, position = position_jitterdodge(dodge.width = 0.8)) + ggpubr::rotate() -> tmp
+
+plot$plot +     geom_boxplot(size=0.05, alpha=0.2) + ggforce::geom_sina(size  = 0.6, alpha = 0.4) + ggpubr::rotate() -> tmp
+
+ggpubr::set_palette(tmp, palette = c("#E64B35FF", "#00A087FF"))  + theme(legend.position = "top") -> fig4b
+
+fig4b
+
+
+fig4b %>% 
+  export::graph2ppt(append = TRUE, file = file.path(figures, "figures.pptx"))
+
+fig4b %>%
+  ggsave(path = figures,
+         plot = .,
+         filename = "fig4b.png",
+         units = "cm", width = 20, height = 10)
+```
+
+
+```{r fig.height = 10 , fig.width = 10 , message=FALSE}
+# pwy %>%
+#   dplyr::filter(Health_status == "Healthy control") %>%
+#      dplyr::filter(Oral_Site %in% c("SALIVA", "SUBGINGIVAL_PLAQUE")) %>%
+#    # dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>% 
+#   humann2_RNA_DNA_ratio_plot(x_plot = "name", 
+#                        y_plot = "log2(RNA_DNA)", 
+#                        color = "Oral_Site", 
+#                        fill = "Oral_Site",
+#                        shape = NULL,
+#                        filter_species = "Streptococcus_gordonii",
+#                        filter_feature = diff_signif %>% filter(Species == "Streptococcus_gordonii") %>% pull(Feature),
+#                        facet_formula = " . ~ Health_status ",
+#                        export_legend = TRUE) -> plot
+#   
+# 
+# plot$legend
+# plot$plot
+```
+
+
+Fig 5. Overall bacterial activity of selected species in health versus diseases
+
+### Fig5A: box plot species in health and disease at each site
+
+
+```{r fig.height = 6 , fig.width = 16 , message=FALSE}
+strep_sel <- c(ma_saliva_plaque_strep_sel, ma_saliva_tongue_strep_sel)
+```
+
+```{r fig.height = 2 , fig.width = 2 , message=FALSE}
+pwy %>%
+  # dplyr::filter(Health_status == "Healthy control",
+  # Oral_Site %in% c("SALIVA", "TONGUE_BIOFILM")) %>%
+  # filter(RNA_DNA > mean(RNA_DNA, na.rm = TRUE)) %>%
+  # dplyr::filter(grepl("ose",name)) %>%
+  humann2_RNA_DNA_ratio_plot(x_plot = "Species", 
+                             y_plot = "log2(RNA_DNA)", 
+                             color = "Health_status", 
+                             fill = "Health_status",
+                             shape = NULL,
+                             filter_species = strep_sel,
+                             facet_formula = ". ~ Oral_Site",
+                             export_legend = TRUE) -> plot
+
+plot$legend
+```
+
+```{r fig.height = 10 , fig.width = 10 , message=FALSE}
+plot$plot + ggpubr::rotate()
+```
+
+```{r , message=FALSE}
+plot$plot$data %>% 
+  ggpubr::compare_means(RNA_DNA ~ Health_status,
+                        group.by = c("Oral_Site", "Species"),
+                        data = .,
+                        method = "wilcox.test",
+                        p.adjust.method = "fdr",                         alternative = "two.sided") %>%
+  filter(p.adj < 0.05)  %>%
+  DT::datatable()
+```
+
+```{r fig.height = 10 , fig.width = 10 , message=FALSE}
+ggpubr::get_palette("jco", 3)
+```
+
+```{r, message=FALSE}
+plot$plot + geom_point(size  = 0.6, alpha = 0.4, position = position_jitterdodge(dodge.width = 0.8)) + ggpubr::rotate() -> tmp
+
+plot$plot +     geom_violin(size=0.05, alpha=0.2) + ggforce::geom_sina(size  = 0.6, alpha = 0.4) + ggpubr::rotate() -> tmp
+
+ggpubr::set_palette(tmp, palette = c("#EFC000FF", "#868686FF"))  + theme(legend.position = "top") -> fig5
+
+fig5
+
+fig5 %>% 
+  export::graph2ppt(append = TRUE, file = file.path(figures, "figures.pptx"))
+
+
+fig5 %>%
+  ggsave(path = figures,
+         plot = .,
+         filename = "fig5.png",
+         units = "cm", width = 20, height = 10)
+```
+Fig 6 Pathway activity of selected species at each site in health versus disease
+
+Fig6A-F: significant pathway expression by candidate species at each site in health and disease
+
+
+```{r fig.height = 60 , fig.width = 15 , message=FALSE, warning = FALSE}
+pwy %>%
+  dplyr::filter(Species %in% strep_sel) %>%
+  # dplyr::filter(Oral_Site %in% c("SALIVA")) %>%
+  # dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>% 
+  humann2_RNA_DNA_ratio_plot(x_plot = "name", 
+                             y_plot = "log2(RNA_DNA)", 
+                             color = "Health_status", 
+                             fill = "Health_status",
+                             shape = NULL,
+                             # filter_species = "Streptococcus_infantis",
+                             # filter_feature = diff_signif %>% filter(Species == "Streptococcus_infantis") %>% pull(Feature),
+                             facet_formula = " . ~ Species + Oral_Site ",
+                             export_legend = TRUE) -> plot
+```
+
+```{r fig.height = 2 , fig.width = 2 , message=FALSE}
+
+plot$legend
+```
+
+```{r fig.height = 40 , fig.width = 20 , message=FALSE}
+# plot$plot
+```
+
+A - SALIVA
+
+```{r , message=FALSE}
+strep_sel <- c(ma_saliva_plaque_strep_sel, ma_saliva_tongue_strep_sel)
+strep_sel
+```
+
+Streptococcus_infantis
+```{r fig.height = 60 , fig.width = 15 , message=FALSE}
+pwy %>%
+  dplyr::filter(Species %in% strep_sel) %>%
+  dplyr::filter(Oral_Site %in% c("SALIVA")) %>%
+  # dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>% 
+  humann2_RNA_DNA_ratio_plot(x_plot = "name", 
+                             y_plot = "log2(RNA_DNA)", 
+                             color = "Health_status", 
+                             fill = "Health_status",
+                             shape = NULL,
+                             filter_species = "Streptococcus_infantis",
+                             # filter_feature = diff_signif %>% filter(Species == "Streptococcus_infantis") %>% pull(Feature),
+                             facet_formula = " . ~ Species ",
+                             export_legend = TRUE) -> plot
+```
+
+```{r fig.height = 30 , fig.width = 12 , message=FALSE}
+
+# plot$legend
+# plot$plot
+```
+
+```{r , message=FALSE}
+plot$plot$data %>% 
+  # mutate(log2RNA_DNA = log2(RNA_DNA)) %>%
+  ggpubr::compare_means(RNA_DNA ~  Health_status,
+                        group.by = c("Feature"),
+                        data = .,
+                        # method = "wilcox.test",
+                        p.adjust.method = "fdr",                         alternative = "two.sided") -> diff
+
+diff %>%
+  filter(p.adj < 0.05) -> diff_signif  
+
+diff_signif %>%
+  DT::datatable()
+```
+
+```{r fig.height = 10 , fig.width = 10 , message=FALSE}
+# pwy %>%
+#    dplyr::filter(Species %in% "Streptococcus_infantis") %>%
+#      dplyr::filter(Oral_Site %in% c("SALIVA")) %>%
+#    # dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>% 
+#   humann2_RNA_DNA_ratio_plot(x_plot = "name", 
+#                        y_plot = "log2(RNA_DNA)", 
+#                        color = "Health_status", 
+#                        fill = "Health_status",
+#                        shape = NULL,
+#                        # filter_species = "Streptococcus_infantis",
+#                        filter_feature = diff_signif %>% filter(Species == "Streptococcus_infantis") %>% pull(Feature),
+#                        facet_formula = " . ~ Species ",
+#                        export_legend = TRUE) -> plot
+#   
+# 
+# plot$legend
+# plot$plot
+```
+
+Streptococcus_parasanguinis
+```{r fig.height = 60 , fig.width = 15 , message=FALSE}
+pwy %>%
+  dplyr::filter(Species %in% strep_sel) %>%
+  dplyr::filter(Oral_Site %in% c("SALIVA")) %>%
+  # dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>% 
+  humann2_RNA_DNA_ratio_plot(x_plot = "name", 
+                             y_plot = "log2(RNA_DNA)", 
+                             color = "Health_status", 
+                             fill = "Health_status",
+                             shape = NULL,
+                             filter_species = "Streptococcus_parasanguinis",
+                             # filter_feature = diff_signif %>% filter(Species == "Streptococcus_infantis") %>% pull(Feature),
+                             facet_formula = " . ~ Species ",
+                             export_legend = TRUE) -> plot
+```
+
+```{r fig.height = 22 , fig.width = 10 , message=FALSE}
+
+# plot$legend
+# plot$plot
+```
+
+```{r , message=FALSE}
+plot$plot$data %>% 
+  # mutate(log2RNA_DNA = log2(RNA_DNA)) %>%
+  ggpubr::compare_means(RNA_DNA ~  Health_status,
+                        group.by = c("Feature"),
+                        data = .,
+                        # method = "wilcox.test",
+                        p.adjust.method = "fdr",                         alternative = "two.sided") %>%
+  filter(p.adj < 0.05) -> diff_signif  
+
+diff_signif %>%
+  DT::datatable()
+```
+
+```{r fig.height = 10 , fig.width = 10 , message=FALSE}
+pwy %>%
+  dplyr::filter(Species %in% "Streptococcus_parasanguinis") %>%
+  dplyr::filter(Oral_Site %in% c("SALIVA")) %>%
+  # dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>% 
+  humann2_RNA_DNA_ratio_plot(x_plot = "name", 
+                             y_plot = "log2(RNA_DNA)", 
+                             color = "Health_status", 
+                             fill = "Health_status",
+                             shape = NULL,
+                             # filter_species = "Streptococcus_infantis",
+                             filter_feature = diff_signif %>% pull(Feature),
+                             facet_formula = " . ~ Species ",
+                             export_legend = TRUE) -> plot
+
+
+plot$legend
+plot$plot
+```
+
+```{r, message=FALSE}
+plot$plot + geom_point(size  = 0.6, alpha = 0.4, position = position_jitterdodge(dodge.width = 0.8)) + ggpubr::rotate() -> tmp
+
+plot$plot + geom_boxplot(size=0.05, alpha=0.2) + ggforce::geom_sina(size  = 0.6, alpha = 0.4) + ggpubr::rotate() -> tmp
+
+ggpubr::set_palette(tmp, palette = c("#EFC000FF", "#868686FF"))  + theme(legend.position = "top") -> fig6a
+
+fig6a  %>% 
+  export::graph2ppt(append = TRUE, file = file.path(figures, "figures.pptx"))
+
+fig6a %>%
+  ggsave(path = figures,
+         plot = .,
+         filename = "fig6a.png",
+         units = "cm", width = 20, height = 10)
+```
+
+Streptococcus_salivarius
+```{r fig.height = 60 , fig.width = 15 , message=FALSE}
+pwy %>%
+  dplyr::filter(Species %in% strep_sel) %>%
+  dplyr::filter(Oral_Site %in% c("SALIVA")) %>%
+  # dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>% 
+  humann2_RNA_DNA_ratio_plot(x_plot = "name", 
+                             y_plot = "log2(RNA_DNA)", 
+                             color = "Health_status", 
+                             fill = "Health_status",
+                             shape = NULL,
+                             filter_species = "Streptococcus_salivarius",
+                             # filter_feature = diff_signif %>% filter(Species == "Streptococcus_infantis") %>% pull(Feature),
+                             facet_formula = " . ~ Species ",
+                             export_legend = TRUE) -> plot
+```
+
+```{r fig.height = 30 , fig.width = 12 , message=FALSE}
+
+# plot$legend
+# plot$plot
+```
+
+```{r , message=FALSE}
+plot$plot$data %>% 
+  # mutate(log2RNA_DNA = log2(RNA_DNA)) %>%
+  ggpubr::compare_means(RNA_DNA ~  Health_status,
+                        group.by = c("Feature"),
+                        data = .,
+                        # method = "wilcox.test",
+                        p.adjust.method = "fdr",                         alternative = "two.sided") %>%
+  filter(p.adj < 0.05) -> diff_signif  
+
+diff_signif %>%
+  DT::datatable()
+```
+
+```{r fig.height = 10 , fig.width = 10 , message=FALSE}
+pwy %>%
+  dplyr::filter(Species %in% "Streptococcus_salivarius") %>%
+  dplyr::filter(Oral_Site %in% c("SALIVA")) %>%
+  # dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>% 
+  humann2_RNA_DNA_ratio_plot(x_plot = "name", 
+                             y_plot = "log2(RNA_DNA)", 
+                             color = "Health_status", 
+                             fill = "Health_status",
+                             shape = NULL,
+                             # filter_species = "Streptococcus_infantis",
+                             filter_feature = diff_signif %>% pull(Feature),
+                             facet_formula = "  ~ Species ",
+                             export_legend = TRUE) -> plot
+
+
+plot$legend
+plot$plot
+```
+
+```{r, message=FALSE}
+plot$plot + geom_point(size  = 0.6, alpha = 0.4, position = position_jitterdodge(dodge.width = 0.8)) + ggpubr::rotate() -> tmp
+
+plot$plot + geom_boxplot(size=0.05, alpha=0.2) + ggforce::geom_sina(size  = 0.6, alpha = 0.4) + ggpubr::rotate() -> tmp
+
+ggpubr::set_palette(tmp, palette = c("#EFC000FF", "#868686FF"))  + theme(legend.position = "top") -> fig6b
+
+
+fig6b  %>% 
+  export::graph2ppt(append = TRUE, file = file.path(figures, "figures.pptx"))
+
+
+fig6b
+
+fig6b %>%
+  ggsave(path = figures,
+         plot = .,
+         filename = "fig6b.png",
+         units = "cm", width = 20, height = 10)
+```
+
+Streptococcus_gordonii
+```{r fig.height = 60 , fig.width = 15 , message=FALSE}
+pwy %>%
+  dplyr::filter(Species %in% strep_sel) %>%
+  dplyr::filter(Oral_Site %in% c("SALIVA")) %>%
+  # dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>% 
+  humann2_RNA_DNA_ratio_plot(x_plot = "name", 
+                             y_plot = "log2(RNA_DNA)", 
+                             color = "Health_status", 
+                             fill = "Health_status",
+                             shape = NULL,
+                             filter_species = "Streptococcus_gordonii",
+                             # filter_feature = diff_signif %>% filter(Species == "Streptococcus_infantis") %>% pull(Feature),
+                             facet_formula = " . ~ Species ",
+                             export_legend = TRUE) -> plot
+```
+
+```{r fig.height = 30 , fig.width = 12 , message=FALSE}
+
+plot$legend
+plot$plot
+```
+
+```{r , message=FALSE}
+plot$plot$data %>% 
+  # mutate(log2RNA_DNA = log2(RNA_DNA)) %>%
+  ggpubr::compare_means(RNA_DNA ~  Health_status,
+                        group.by = c("Feature"),
+                        data = .,
+                        # method = "wilcox.test",
+                        p.adjust.method = "fdr",                         alternative = "two.sided") %>%
+  filter(p.adj < 0.05) -> diff_signif  
+
+diff_signif %>%
+  DT::datatable()
+```
+
+```{r fig.height = 10 , fig.width = 10 , message=FALSE}
+# pwy %>%
+#    dplyr::filter(Species %in% "Streptococcus_gordonii") %>%
+#      dplyr::filter(Oral_Site %in% c("SALIVA")) %>%
+#    # dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>% 
+#   humann2_RNA_DNA_ratio_plot(x_plot = "name", 
+#                        y_plot = "log2(RNA_DNA)", 
+#                        color = "Health_status", 
+#                        fill = "Health_status",
+#                        shape = NULL,
+#                        # filter_species = "Streptococcus_infantis",
+#                        filter_feature = diff_signif %>% pull(Feature),
+#                        facet_formula = " . ~ Species ",
+#                        export_legend = TRUE) -> plot
+#   
+# 
+# plot$legend
+# plot$plot
+```
+
+Streptococcus_sanguinis
+```{r fig.height = 60 , fig.width = 15 , message=FALSE}
+pwy %>%
+  dplyr::filter(Species %in% strep_sel) %>%
+  dplyr::filter(Oral_Site %in% c("SALIVA")) %>%
+  # dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>% 
+  humann2_RNA_DNA_ratio_plot(x_plot = "name", 
+                             y_plot = "log2(RNA_DNA)", 
+                             color = "Health_status", 
+                             fill = "Health_status",
+                             shape = NULL,
+                             filter_species = "Streptococcus_sanguinis",
+                             # filter_feature = diff_signif %>% filter(Species == "Streptococcus_infantis") %>% pull(Feature),
+                             facet_formula = " . ~ Species ",
+                             export_legend = TRUE) -> plot
+```
+
+```{r fig.height = 30 , fig.width = 12 , message=FALSE}
+
+plot$legend
+plot$plot
+```
+
+```{r , message=FALSE}
+plot$plot$data %>% 
+  # mutate(log2RNA_DNA = log2(RNA_DNA)) %>%
+  ggpubr::compare_means(RNA_DNA ~  Health_status,
+                        group.by = c("Feature"),
+                        data = .,
+                        # method = "wilcox.test",
+                        p.adjust.method = "fdr",                         alternative = "two.sided") %>%
+  filter(p.adj < 0.05) -> diff_signif  
+
+diff_signif %>%
+  DT::datatable()
+```
+
+```{r fig.height = 10 , fig.width = 10 , message=FALSE}
+# pwy %>%
+#    dplyr::filter(Species %in% "Streptococcus_sanguinis") %>%
+#      dplyr::filter(Oral_Site %in% c("SALIVA")) %>%
+#    # dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>% 
+#   humann2_RNA_DNA_ratio_plot(x_plot = "name", 
+#                        y_plot = "log2(RNA_DNA)", 
+#                        color = "Health_status", 
+#                        fill = "Health_status",
+#                        shape = NULL,
+#                        # filter_species = "Streptococcus_infantis",
+#                        filter_feature = diff_signif %>% pull(Feature),
+#                        facet_formula = " . ~ Species ",
+#                        export_legend = TRUE) -> plot
+#   
+# 
+# plot$legend
+# plot$plot
+```
+
+
+Streptococcus_oralis
+```{r fig.height = 60 , fig.width = 15 , message=FALSE}
+pwy %>%
+  dplyr::filter(Species %in% strep_sel) %>%
+  dplyr::filter(Oral_Site %in% c("SALIVA")) %>%
+  # dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>% 
+  humann2_RNA_DNA_ratio_plot(x_plot = "name", 
+                             y_plot = "log2(RNA_DNA)", 
+                             color = "Health_status", 
+                             fill = "Health_status",
+                             shape = NULL,
+                             filter_species = "Streptococcus_oralis",
+                             # filter_feature = diff_signif %>% filter(Species == "Streptococcus_infantis") %>% pull(Feature),
+                             facet_formula = " . ~ Species ",
+                             export_legend = TRUE) -> plot
+```
+
+```{r fig.height = 30 , fig.width = 12 , message=FALSE}
+
+plot$legend
+plot$plot
+```
+
+```{r , message=FALSE}
+plot$plot$data %>% 
+  # mutate(log2RNA_DNA = log2(RNA_DNA)) %>%
+  ggpubr::compare_means(RNA_DNA ~  Health_status,
+                        group.by = c("Feature"),
+                        data = .,
+                        # method = "wilcox.test",
+                        p.adjust.method = "fdr",                         alternative = "two.sided") %>%
+  filter(p.adj < 0.05) -> diff_signif  
+
+diff_signif %>%
+  DT::datatable()
+```
+
+```{r fig.height = 10 , fig.width = 10 , message=FALSE}
+pwy %>%
+  dplyr::filter(Species %in% "Streptococcus_oralis") %>%
+  dplyr::filter(Oral_Site %in% c("SALIVA")) %>%
+  # dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>% 
+  humann2_RNA_DNA_ratio_plot(x_plot = "name", 
+                             y_plot = "log2(RNA_DNA)", 
+                             color = "Health_status", 
+                             fill = "Health_status",
+                             shape = NULL,
+                             # filter_species = "Streptococcus_infantis",
+                             filter_feature = diff_signif %>% pull(Feature),
+                             facet_formula = " . ~ Species ",
+                             export_legend = TRUE) -> plot
+
+
+plot$legend
+plot$plot
+```
+
+
+
+B - TONGUE_BIOFILM
+
+```{r , message=FALSE}
+strep_sel <- c(ma_saliva_tongue_strep_sel)
+strep_sel
+```
+
+Streptococcus_infantis
+```{r fig.height = 60 , fig.width = 15 , message=FALSE}
+pwy %>%
+  dplyr::filter(Species %in% strep_sel) %>%
+  dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>%
+  # dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>% 
+  humann2_RNA_DNA_ratio_plot(x_plot = "name", 
+                             y_plot = "log2(RNA_DNA)", 
+                             color = "Health_status", 
+                             fill = "Health_status",
+                             shape = NULL,
+                             filter_species = "Streptococcus_infantis",
+                             # filter_feature = diff_signif %>% filter(Species == "Streptococcus_infantis") %>% pull(Feature),
+                             facet_formula = " . ~ Species ",
+                             export_legend = TRUE) -> plot
+```
+
+```{r fig.height = 30 , fig.width = 12 , message=FALSE}
+
+plot$legend
+plot$plot
+```
+
+```{r , message=FALSE}
+plot$plot$data %>% 
+  # mutate(log2RNA_DNA = log2(RNA_DNA)) %>%
+  ggpubr::compare_means(RNA_DNA ~  Health_status,
+                        group.by = c("Feature"),
+                        data = .,
+                        # method = "wilcox.test",
+                        p.adjust.method = "fdr",                         alternative = "two.sided") %>%
+  filter(p.adj < 0.05) -> diff_signif  
+
+diff_signif %>%
+  DT::datatable()
+```
+
+```{r fig.height = 10 , fig.width = 10 , message=FALSE}
+# pwy %>%
+#    dplyr::filter(Species %in% "Streptococcus_infantis") %>%
+#      dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>%
+#    # dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>%
+#   humann2_RNA_DNA_ratio_plot(x_plot = "name",
+#                        y_plot = "log2(RNA_DNA)",
+#                        color = "Health_status",
+#                        fill = "Health_status",
+#                        shape = NULL,
+#                        # filter_species = "Streptococcus_infantis",
+#                        filter_feature = diff_signif  %>% pull(Feature),
+#                        facet_formula = " . ~ Species ",
+#                        export_legend = TRUE) -> plot
+# 
+# 
+# plot$legend
+# plot$plot
+```
+
+Streptococcus_parasanguinis
+```{r fig.height = 60 , fig.width = 15 , message=FALSE}
+pwy %>%
+  dplyr::filter(Species %in% strep_sel) %>%
+  dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>%
+  # dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>% 
+  humann2_RNA_DNA_ratio_plot(x_plot = "name", 
+                             y_plot = "log2(RNA_DNA)", 
+                             color = "Health_status", 
+                             fill = "Health_status",
+                             shape = NULL,
+                             filter_species = "Streptococcus_parasanguinis",
+                             # filter_feature = diff_signif %>% filter(Species == "Streptococcus_infantis") %>% pull(Feature),
+                             facet_formula = " . ~ Species ",
+                             export_legend = TRUE) -> plot
+```
+
+```{r fig.height = 30 , fig.width = 12 , message=FALSE}
+
+# plot$legend
+# plot$plot
+```
+
+```{r , message=FALSE}
+plot$plot$data %>% 
+  # mutate(log2RNA_DNA = log2(RNA_DNA)) %>%
+  ggpubr::compare_means(RNA_DNA ~  Health_status,
+                        group.by = c("Feature"),
+                        data = .,
+                        # method = "wilcox.test",
+                        p.adjust.method = "fdr",                         alternative = "two.sided") %>%
+  filter(p.adj < 0.05) -> diff_signif  
+
+diff_signif %>%
+  DT::datatable()
+```
+
+```{r fig.height = 10 , fig.width = 10 , message=FALSE}
+pwy %>%
+  dplyr::filter(Species %in% "Streptococcus_parasanguinis") %>%
+  dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>%
+  # dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>%
+  humann2_RNA_DNA_ratio_plot(x_plot = "name",
+                             y_plot = "log2(RNA_DNA)",
+                             color = "Health_status",
+                             fill = "Health_status",
+                             shape = NULL,
+                             # filter_species = "Streptococcus_infantis",
+                             filter_feature = diff_signif %>% pull(Feature),
+                             facet_formula = " . ~ Species ",
+                             export_legend = TRUE) -> plot
+
+
+plot$legend
+plot$plot
+```
+
+```{r, message=FALSE}
+plot$plot + geom_point(size  = 0.6, alpha = 0.4, position = position_jitterdodge(dodge.width = 0.8)) + ggpubr::rotate() -> tmp
+
+plot$plot +     geom_boxplot(size=0.05, alpha=0.2) + ggforce::geom_sina(size  = 0.6, alpha = 0.4) + ggpubr::rotate() -> tmp
+
+
+ggpubr::set_palette(tmp, palette = c("#EFC000FF", "#868686FF"))  + theme(legend.position = "top") -> fig7
+
+
+fig7  %>% 
+  export::graph2ppt(append = TRUE, file = file.path(figures, "figures.pptx"))
+
+
+fig7 %>%
+  ggsave(path = figures,
+         plot = .,
+         filename = "fig7.png",
+         units = "cm", width = 20, height = 10)
+```
+
+Streptococcus_salivarius
+```{r fig.height = 60 , fig.width = 15 , message=FALSE}
+pwy %>%
+  dplyr::filter(Species %in% "Streptococcus_salivarius") %>%
+  dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>%
+  # dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>% 
+  humann2_RNA_DNA_ratio_plot(x_plot = "name", 
+                             y_plot = "log2(RNA_DNA)", 
+                             color = "Health_status", 
+                             fill = "Health_status",
+                             shape = NULL,
+                             filter_species = "Streptococcus_salivarius",
+                             # filter_feature = diff_signif %>% filter(Species == "Streptococcus_infantis") %>% pull(Feature),
+                             facet_formula = " . ~ Species ",
+                             export_legend = TRUE) -> plot
+```
+
+```{r fig.height = 30 , fig.width = 12 , message=FALSE}
+
+# plot$legend
+# plot$plot
+```
+
+```{r , message=FALSE}
+plot$plot$data %>% 
+  # mutate(log2RNA_DNA = log2(RNA_DNA)) %>%
+  ggpubr::compare_means(RNA_DNA ~  Health_status,
+                        group.by = c("Feature"),
+                        data = .,
+                        # method = "wilcox.test",
+                        p.adjust.method = "fdr",                         alternative = "two.sided") %>%
+  filter(p.adj < 0.05) -> diff_signif  
+
+diff_signif %>%
+  DT::datatable()
+```
+
+```{r fig.height = 10 , fig.width = 10 , message=FALSE}
+# pwy %>%
+#    dplyr::filter(Species %in% "Streptococcus_salivarius") %>%
+#      dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>%
+#    # dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>% 
+#   humann2_RNA_DNA_ratio_plot(x_plot = "name", 
+#                        y_plot = "log2(RNA_DNA)", 
+#                        color = "Health_status", 
+#                        fill = "Health_status",
+#                        shape = NULL,
+#                        # filter_species = "Streptococcus_infantis",
+#                        filter_feature = diff_signif %>% pull(Feature),
+#                        facet_formula = " . ~ Species ",
+#                        export_legend = TRUE) -> plot
+#   
+# 
+# plot$legend
+# plot$plot
+```
+
+
+C - SUBGINGIVAL_PLAQUE
+
+```{r , message=FALSE}
+strep_sel <- c(ma_saliva_plaque_strep_sel)
+strep_sel
+```
+
+Streptococcus_oralis
+```{r fig.height = 60 , fig.width = 15 , message=FALSE}
+pwy %>%
+  dplyr::filter(Species %in% strep_sel) %>%
+  dplyr::filter(Oral_Site %in% c("SUBGINGIVAL_PLAQUE")) %>%
+  # dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>% 
+  humann2_RNA_DNA_ratio_plot(x_plot = "name", 
+                             y_plot = "log2(RNA_DNA)", 
+                             color = "Health_status", 
+                             fill = "Health_status",
+                             shape = NULL,
+                             filter_species = "Streptococcus_oralis",
+                             # filter_feature = diff_signif %>% filter(Species == "Streptococcus_infantis") %>% pull(Feature),
+                             facet_formula = " . ~ Species ",
+                             export_legend = TRUE) -> plot
+```
+
+```{r fig.height = 30 , fig.width = 15 , message=FALSE}
+
+# plot$legend
+# plot$plot
+```
+
+```{r , message=FALSE}
+plot$plot$data %>% 
+  # mutate(log2RNA_DNA = log2(RNA_DNA)) %>%
+  ggpubr::compare_means(RNA_DNA ~  Health_status,
+                        group.by = c("Feature"),
+                        data = .,
+                        # method = "wilcox.test",
+                        p.adjust.method = "fdr",                         alternative = "two.sided") %>%
+  filter(p.adj < 0.05) -> diff_signif  
+
+diff_signif %>%
+  DT::datatable()
+```
+
+```{r fig.height = 10 , fig.width = 10 , message=FALSE}
+# pwy %>%
+#    dplyr::filter(Species %in% "Streptococcus_infantis") %>%
+#      dplyr::filter(Oral_Site %in% c("SUBGINGIVAL_PLAQUE")) %>%
+#    # dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>%
+#   humann2_RNA_DNA_ratio_plot(x_plot = "name",
+#                        y_plot = "log2(RNA_DNA)",
+#                        color = "Health_status",
+#                        fill = "Health_status",
+#                        shape = NULL,
+#                        # filter_species = "Streptococcus_infantis",
+#                        filter_feature = diff_signif  %>% pull(Feature),
+#                        facet_formula = " . ~ Species ",
+#                        export_legend = TRUE) -> plot
+# 
+# 
+# plot$legend
+# plot$plot
+```
+
+Streptococcus_sanguinis
+```{r fig.height = 60 , fig.width = 15 , message=FALSE}
+pwy %>%
+  dplyr::filter(Species %in% strep_sel) %>%
+  dplyr::filter(Oral_Site %in% c("SUBGINGIVAL_PLAQUE")) %>%
+  # dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>% 
+  humann2_RNA_DNA_ratio_plot(x_plot = "name", 
+                             y_plot = "log2(RNA_DNA)", 
+                             color = "Health_status", 
+                             fill = "Health_status",
+                             shape = NULL,
+                             filter_species = "Streptococcus_sanguinis",
+                             # filter_feature = diff_signif %>% filter(Species == "Streptococcus_infantis") %>% pull(Feature),
+                             facet_formula = " . ~ Species ",
+                             export_legend = TRUE) -> plot
+```
+
+```{r fig.height = 30 , fig.width = 15 , message=FALSE}
+
+# plot$legend
+# plot$plot
+```
+
+```{r , message=FALSE}
+plot$plot$data %>% 
+  # mutate(log2RNA_DNA = log2(RNA_DNA)) %>%
+  ggpubr::compare_means(RNA_DNA ~  Health_status,
+                        group.by = c("Feature"),
+                        data = .,
+                        # method = "wilcox.test",
+                        p.adjust.method = "fdr",                         alternative = "two.sided") %>%
+  filter(p.adj < 0.05) -> diff_signif  
+
+diff_signif %>%
+  DT::datatable()
+```
+
+```{r fig.height = 10 , fig.width = 10 , message=FALSE}
+# pwy %>%
+#    dplyr::filter(Species %in% "Streptococcus_sanguinis") %>%
+#      dplyr::filter(Oral_Site %in% c("SUBGINGIVAL_PLAQUE")) %>%
+#    # dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>% 
+#   humann2_RNA_DNA_ratio_plot(x_plot = "name", 
+#                        y_plot = "log2(RNA_DNA)", 
+#                        color = "Health_status", 
+#                        fill = "Health_status",
+#                        shape = NULL,
+#                        # filter_species = "Streptococcus_infantis",
+#                        filter_feature = diff_signif %>% pull(Feature),
+#                        facet_formula = " . ~ Species ",
+#                        export_legend = TRUE) -> plot
+#   
+# 
+# plot$legend
+# plot$plot
+```
+
+
+
+Streptococcus_gordonii
+```{r fig.height = 60 , fig.width = 15 , message=FALSE}
+pwy %>%
+  dplyr::filter(Species %in% strep_sel) %>%
+  dplyr::filter(Oral_Site %in% c("SUBGINGIVAL_PLAQUE")) %>%
+  # dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>% 
+  humann2_RNA_DNA_ratio_plot(x_plot = "name", 
+                             y_plot = "log2(RNA_DNA)", 
+                             color = "Health_status", 
+                             fill = "Health_status",
+                             shape = NULL,
+                             filter_species = "Streptococcus_gordonii",
+                             # filter_feature = diff_signif %>% filter(Species == "Streptococcus_infantis") %>% pull(Feature),
+                             facet_formula = " . ~ Species ",
+                             export_legend = TRUE) -> plot
+```
+
+```{r fig.height = 30 , fig.width = 12 , message=FALSE}
+
+# plot$legend
+# plot$plot
+```
+
+```{r , message=FALSE}
+plot$plot$data %>% 
+  # mutate(log2RNA_DNA = log2(RNA_DNA)) %>%
+  ggpubr::compare_means(RNA_DNA ~  Health_status,
+                        group.by = c("Feature"),
+                        data = .,
+                        # method = "wilcox.test",
+                        p.adjust.method = "fdr",                         alternative = "two.sided") %>%
+  filter(p.adj < 0.05) -> diff_signif  
+
+diff_signif %>%
+  DT::datatable()
+```
+
+```{r fig.height = 10 , fig.width = 10 , message=FALSE}
+# pwy %>%
+#    dplyr::filter(Species %in% "Streptococcus_salivarius") %>%
+#      dplyr::filter(Oral_Site %in% c("SUBGINGIVAL_PLAQUE")) %>%
+#    # dplyr::filter(Oral_Site %in% c("TONGUE_BIOFILM")) %>% 
+#   humann2_RNA_DNA_ratio_plot(x_plot = "name", 
+#                        y_plot = "log2(RNA_DNA)", 
+#                        color = "Health_status", 
+#                        fill = "Health_status",
+#                        shape = NULL,
+#                        # filter_species = "Streptococcus_infantis",
+#                        filter_feature = diff_signif %>% pull(Feature),
+#                        facet_formula = " . ~ Species ",
+#                        export_legend = TRUE) -> plot
+#   
+# 
+# plot$legend
+# plot$plot
+```
+
+
+```{r , message=FALSE}
+sessionInfo()
+```
+
